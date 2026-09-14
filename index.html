@@ -78,6 +78,7 @@
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center space-x-3">
                     <input type="month" id="corpMonthPicker" onchange="renderCorporate()" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
+                    <button onclick="clearMonthPicker('corpMonthPicker')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded border border-slate-300">クリア</button>
                     <span class="text-xs text-slate-500 font-medium">（未指定時は全期間集計）</span>
                 </div>
                 <div class="text-xs text-slate-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
@@ -143,6 +144,7 @@
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center space-x-3">
                     <input type="month" id="persMonthPicker" onchange="renderPersonal()" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
+                    <button onclick="clearMonthPicker('persMonthPicker')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded border border-slate-300">クリア</button>
                     <div class="flex items-center space-x-2">
                         <label class="text-xs text-slate-600 font-semibold">青色申告控除:</label>
                         <select id="persDeduction" onchange="renderPersonal()" class="text-xs bg-slate-100 border border-slate-300 rounded px-2 py-1">
@@ -259,10 +261,10 @@
         <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
             <div class="flex justify-between items-center border-b pb-3">
                 <div class="flex space-x-2">
-                    <button id="tabSingleBtn" onclick="switchModalTab('single')" class="text-sm font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">個別入力</button>
-                    <button id="tabBulkBtn" onclick="switchModalTab('bulk')" class="text-sm font-bold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">一括入力 (CSV/テキスト)</button>
+                    <button id="tabSingleBtn" type="button" onclick="switchModalTab('single')" class="text-sm font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">個別入力</button>
+                    <button id="tabBulkBtn" type="button" onclick="switchModalTab('bulk')" class="text-sm font-bold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">一括入力 (CSV/テキスト)</button>
                 </div>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button type="button" onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
 
             <!-- 個別入力フォーム -->
@@ -331,7 +333,7 @@
         // Supabase 設定情報
         const SUPABASE_URL = 'https://oagxstxstrmrxfxfmxta.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZ3hzdHhzdHJtcnhmeGZteHRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc3Mjg4NzMsImV4cCI6MjA3MzMwODg3M30.C2kIn0139Wn_84jC_QYlE1a5pL_b5OAnU_aO52v56P8';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         let transactions = [];
         let corpChartInstance = null;
@@ -346,10 +348,16 @@
             await fetchTransactions();
         });
 
+        function clearMonthPicker(id) {
+            document.getElementById(id).value = '';
+            if (id === 'corpMonthPicker') renderCorporate();
+            if (id === 'persMonthPicker') renderPersonal();
+        }
+
         // Supabaseからデータ取得
         async function fetchTransactions() {
             try {
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('transactions')
                     .select('*')
                     .order('date', { ascending: false });
@@ -362,6 +370,12 @@
                 console.error('データ取得エラー:', err);
                 alert('データの読み込みに失敗しました。Supabaseの接続状況を確認してください。');
             }
+        }
+
+        function refreshAll() {
+            renderCorporate();
+            renderPersonal();
+            renderCombined();
         }
 
         function switchEntity(entity) {
@@ -416,6 +430,14 @@
             const healthInsurance = taxableIncome * 0.09;
 
             return Math.round(Math.max(0, incomeTax) + residentTax + healthInsurance);
+        }
+
+        // 会社員給与額面への逆算推計
+        function calculateEquivalentSalary(totalNet) {
+            if (totalNet <= 0) return 0;
+            // 簡易逆算: 手取り率を約75%〜80%と想定して逆算
+            let gross = totalNet / 0.75;
+            return Math.round(gross);
         }
 
         function renderCorporate() {
@@ -515,12 +537,12 @@
             const ctx = document.getElementById('persChart').getContext('2d');
             if (persChartInstance) persChartInstance.destroy();
             persChartInstance = new Chart(ctx, {
-                type: 'pie',
+                type: 'doughnut',
                 data: {
-                    labels: ['必要経費', '税制・社保(推定)', '手取り可処分所得'],
+                    labels: ['必要経費', '推定税・社保', '手取り所得'],
                     datasets: [{
                         data: [expenses, tax, Math.max(0, takeHome)],
-                        backgroundColor: ['#f43f5e', '#f59e0b', '#059669']
+                        backgroundColor: ['#f43f5e', '#f59e0b', '#10b981']
                     }]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
@@ -528,18 +550,31 @@
         }
 
         function renderCombined() {
-            const corpSales = transactions.filter(t => t.entity === 'corporate' && t.category === 'sales').reduce((a, b) => a + Number(b.amount), 0);
-            const corpExpense = transactions.filter(t => t.entity === 'corporate' && t.category !== 'sales').reduce((a, b) => a + Number(b.amount), 0);
+            // 全期間集計
+            let corpSales = 0, corpExpense = 0;
+            let persSales = 0, persExpense = 0;
+
+            transactions.forEach(t => {
+                if (t.entity === 'corporate') {
+                    if (t.category === 'sales') corpSales += Number(t.amount);
+                    else corpExpense += Number(t.amount);
+                } else {
+                    if (t.category === 'sales') persSales += Number(t.amount);
+                    else persExpense += Number(t.amount);
+                }
+            });
+
             const corpPreTax = corpSales - corpExpense;
             const corpTax = calculateCorporateTax(corpPreTax);
             const corpNet = corpPreTax - corpTax;
 
-            const blueDeduction = parseFloat(document.getElementById('persDeduction').value) || 650000;
-            const persSales = transactions.filter(t => t.entity === 'personal' && t.category === 'sales').reduce((a, b) => a + Number(b.amount), 0);
-            const persExpense = transactions.filter(t => t.entity === 'personal' && t.category !== 'sales').reduce((a, b) => a + Number(b.amount), 0);
             const persIncome = persSales - persExpense;
+            const blueDeduction = parseFloat(document.getElementById('persDeduction').value) || 0;
             const persTax = calculatePersonalTax(persIncome, blueDeduction);
             const persNet = persIncome - persTax;
+
+            const totalNet = Math.max(0, corpNet) + Math.max(0, persNet);
+            const equivSalary = calculateEquivalentSalary(totalNet);
 
             document.getElementById('combCorpSales').innerText = `¥${corpSales.toLocaleString()}`;
             document.getElementById('combCorpExpense').innerText = `¥${corpExpense.toLocaleString()}`;
@@ -551,35 +586,14 @@
             document.getElementById('combPersTax').innerText = `¥${persTax.toLocaleString()}`;
             document.getElementById('combPersNet').innerText = `¥${persNet.toLocaleString()}`;
 
-            const totalTakeHome = Math.max(0, corpNet) + Math.max(0, persNet);
-            const equivSalary = Math.round(totalTakeHome / 0.77);
             document.getElementById('equivSalaryText').innerText = `¥${equivSalary.toLocaleString()}`;
         }
 
-        // Supabaseからの削除処理
-        async function deleteTransaction(id) {
-            if (confirm('この取引データを削除してもよろしいですか？')) {
-                try {
-                    const { error } = await supabase
-                        .from('transactions')
-                        .delete()
-                        .eq('id', id);
-
-                    if (error) throw error;
-
-                    transactions = transactions.filter(t => t.id !== id);
-                    refreshAll();
-                } catch (err) {
-                    console.error('削除エラー:', err);
-                    alert('データの削除に失敗しました。');
-                }
-            }
-        }
-
-        function openModal(mode = 'single') {
+        // モーダル操作
+        function openModal(tab) {
             document.getElementById('inputModal').classList.remove('hidden');
             document.getElementById('inputModal').classList.add('flex');
-            switchModalTab(mode);
+            switchModalTab(tab);
         }
 
         function closeModal() {
@@ -601,118 +615,109 @@
             }
         }
 
-        // Supabaseへの個別保存処理
+        // 個別保存
         async function handleSaveSingle(e) {
             e.preventDefault();
-            const saveBtn = document.getElementById('saveSingleBtn');
-            saveBtn.disabled = true;
-            saveBtn.innerText = '保存中...';
+            const btn = document.getElementById('saveSingleBtn');
+            btn.disabled = true;
+            btn.innerText = '保存中...';
 
             const newTx = {
                 entity: document.getElementById('txEntity').value,
                 date: document.getElementById('txDate').value,
                 category: document.getElementById('txCategory').value,
-                amount: parseFloat(document.getElementById('txAmount').value) || 0,
+                amount: Number(document.getElementById('txAmount').value),
                 memo: document.getElementById('txMemo').value
             };
 
             try {
-                const { data, error } = await supabase
-                    .from('transactions')
-                    .insert([newTx])
-                    .select();
-
+                const { error } = await supabaseClient.from('transactions').insert([newTx]);
                 if (error) throw error;
 
-                if (data) {
-                    transactions.unshift(data[0]);
-                }
                 closeModal();
-                refreshAll();
+                document.getElementById('txAmount').value = '';
+                document.getElementById('txMemo').value = '';
+                await fetchTransactions();
             } catch (err) {
                 console.error('保存エラー:', err);
-                alert('データの保存に失敗しました。');
+                alert('登録に失敗しました。');
             } finally {
-                saveBtn.disabled = false;
-                saveBtn.innerText = '保存';
+                btn.disabled = false;
+                btn.innerText = '保存';
             }
         }
 
-        // Supabaseへの一括保存処理
+        // 一括保存
         async function handleSaveBulk(e) {
             e.preventDefault();
-            const saveBtn = document.getElementById('saveBulkBtn');
-            saveBtn.disabled = true;
-            saveBtn.innerText = '送信中...';
+            const btn = document.getElementById('saveBulkBtn');
+            btn.disabled = true;
+            btn.innerText = '登録中...';
 
             const entity = document.getElementById('bulkEntity').value;
             const text = document.getElementById('bulkText').value.trim();
-
-            if (!text) {
-                saveBtn.disabled = false;
-                return;
-            }
-
             const lines = text.split('\n');
-            const insertRows = [];
 
-            lines.forEach((line) => {
-                if (!line.trim()) return;
-                const parts = line.split(/[\t,]+/).map(p => p.trim());
+            const insertData = [];
+
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+                // ヘッダー行をスキップ
+                if (line.includes('日付') || line.includes('区分')) continue;
+
+                const parts = line.split(/[\t,]+/);
                 if (parts.length >= 3) {
-                    const date = parts[0];
-                    let cat = parts[1].toLowerCase();
-                    if (cat.includes('売上') || cat.includes('収入') || cat === 'sales') cat = 'sales';
-                    else if (cat.includes('原価') || cat.includes('仕入') || cat === 'cost') cat = 'cost';
-                    else cat = 'expense';
+                    const date = parts[0].trim();
+                    let category = parts[1].trim().toLowerCase();
+                    const amount = Number(parts[2].trim().replace(/[^0-9.]/g, ''));
+                    const memo = parts[3] ? parts[3].trim() : '';
 
-                    const amount = parseFloat(parts[2].replace(/[^0-9.]/g, '')) || 0;
-                    const memo = parts[3] || '';
+                    if (category.includes('売上') || category.includes('sales')) category = 'sales';
+                    else if (category.includes('原価') || category.includes('仕入') || category.includes('cost')) category = 'cost';
+                    else category = 'expense';
 
                     if (date && !isNaN(amount)) {
-                        insertRows.push({
-                            entity: entity,
-                            date: date,
-                            category: cat,
-                            amount: amount,
-                            memo: memo
-                        });
+                        insertData.push({ entity, date, category, amount, memo });
                     }
                 }
-            });
+            }
 
-            if (insertRows.length === 0) {
-                alert('有効なデータが見つかりませんでした。');
-                saveBtn.disabled = false;
-                saveBtn.innerText = '一括登録実行';
+            if (insertData.length === 0) {
+                alert('有効なデータがありませんでした。フォーマットを確認してください。');
+                btn.disabled = false;
+                btn.innerText = '一括登録実行';
                 return;
             }
 
             try {
-                const { data, error } = await supabase
-                    .from('transactions')
-                    .insert(insertRows)
-                    .select();
-
+                const { error } = await supabaseClient.from('transactions').insert(insertData);
                 if (error) throw error;
 
-                alert(`${insertRows.length}件の取引を一括追加しました。`);
-                document.getElementById('bulkText').value = '';
                 closeModal();
+                document.getElementById('bulkText').value = '';
                 await fetchTransactions();
             } catch (err) {
-                console.error('一括保存エラー:', err);
-                alert('一括保存に失敗しました。');
+                console.error('一括登録エラー:', err);
+                alert('一括登録に失敗しました。');
             } finally {
-                saveBtn.disabled = false;
-                saveBtn.innerHTML = '<i class="fa-solid fa-upload mr-1"></i>一括登録実行';
+                btn.disabled = false;
+                btn.innerText = '一括登録実行';
             }
         }
 
-        function refreshAll() {
-            renderCorporate();
-            renderPersonal();
-            renderCombined();
+        // 削除機能
+        async function deleteTransaction(id) {
+            if (!confirm('この取引を削除してもよろしいですか？')) return;
+
+            try {
+                const { error } = await supabaseClient.from('transactions').delete().eq('id', id);
+                if (error) throw error;
+                await fetchTransactions();
+            } catch (err) {
+                console.error('削除エラー:', err);
+                alert('削除に失敗しました。');
+            }
         }
     </script>
 </body>
