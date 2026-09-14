@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+<!-- Supabaseのライブラリを読み込む -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+  // Vercelの環境変数からキーを取得してSupabaseに接続
+  const SUPABASE_URL = window.env?.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
+  const SUPABASE_KEY = window.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+  
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>統合 収支・利益管理ダッシュボード（法人 ＆ 個人事業主）</title>
