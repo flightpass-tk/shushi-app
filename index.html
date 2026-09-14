@@ -1,19 +1,11 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<!-- Supabaseのライブラリを読み込む -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-  // Vercelの環境変数からキーを取得してSupabaseに接続
-  const SUPABASE_URL = window.env?.NEXT_PUBLIC_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-  const SUPABASE_KEY = window.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-  
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>統合 収支・利益管理ダッシュボード（法人 ＆ 個人事業主）</title>
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js CDN -->
@@ -44,21 +36,9 @@
             </div>
             
             <div class="flex items-center space-x-2">
-                <button onclick="openSettingsModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 border border-slate-700">
-                    <i class="fa-solid fa-sliders"></i>
-                    <span class="hidden sm:inline">各種設定</span>
-                </button>
-                <button onclick="openBulkModal()" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow transition flex items-center gap-1">
-                    <i class="fa-solid fa-table-list"></i>
-                    <span>一括入力</span>
-                </button>
-                <button onclick="exportCSV()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1 border border-slate-700">
-                    <i class="fa-solid fa-download"></i>
-                    <span class="hidden sm:inline">CSV</span>
-                </button>
                 <button onclick="openModal()" class="bg-emerald-500 hover:bg-emerald-400 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow transition flex items-center gap-1">
                     <i class="fa-solid fa-plus"></i>
-                    <span>単発入力</span>
+                    <span>取引入力</span>
                 </button>
             </div>
         </div>
@@ -80,1689 +60,354 @@
                 </button>
                 <button id="entityCombinedBtn" onclick="switchEntity('combined')" class="flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200">
                     <i class="fa-solid fa-scale-balanced text-base"></i>
-                    <span>📊 統合 (役員報酬 ＋ 個人 ＋ 会社員比較)</span>
-                </button>
-            </div>
-
-            <!-- サブビュー切り替え（月別 vs 年間） -->
-            <div id="subViewContainer" class="flex space-x-1 bg-slate-100 p-1 rounded-xl w-full md:w-auto justify-end">
-                <button id="tabMonthly" onclick="switchSubView('monthly')" class="px-3 py-1.5 rounded-lg font-bold text-xs bg-white text-slate-800 shadow-sm transition">
-                    月別明細
-                </button>
-                <button id="tabYearly" onclick="switchSubView('yearly')" class="px-3 py-1.5 rounded-lg font-bold text-xs text-slate-600 hover:text-slate-900 transition">
-                    通期・年度レポート
+                    <span>📊 統合比較</span>
                 </button>
             </div>
         </div>
 
-        <!-- ==========================================
-             1. 法人ビュー (Corporate View)
-             ========================================== -->
+        <!-- 1. 法人ビュー -->
         <div id="corporateView" class="space-y-6">
-            
-            <!-- 期間/月選択 コントロール -->
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                <div id="corpMonthlyControl" class="flex items-center space-x-3">
-                    <button onclick="changeMonth(-1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <input type="month" id="corpMonthPicker" onchange="onCorpMonthPickerChange(event)" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <button onclick="changeMonth(1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <input type="month" id="corpMonthPicker" onchange="renderCorporate()" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
                 </div>
-
-                <div id="corpYearlyControl" class="hidden flex items-center space-x-3">
-                    <button onclick="changeFiscalYear(-1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <select id="corpFiscalYearPicker" onchange="onCorpFiscalYearPickerChange(event)" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
-                    </select>
-                    <button onclick="changeFiscalYear(1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-
-                <div class="text-xs text-slate-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center space-x-2">
-                    <i class="fa-solid fa-building-columns text-indigo-600"></i>
-                    <span id="corpFiscalRangeText">創業: 2024年10月 / 決算期: 10月〜9月</span>
+                <div class="text-xs text-slate-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100">
+                    創業: 2024年10月 / 決算期: 10月〜9月
                 </div>
             </div>
 
-            <!-- 法人KPIカード -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+            <!-- 法人KPI -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                     <p class="text-xs font-semibold text-slate-500">売上高</p>
                     <h3 class="text-lg font-extrabold text-slate-900 mt-1" id="corpSales">¥0</h3>
-                    <p class="text-[11px] text-slate-400 mt-1" id="corpSalesSub">売上合計</p>
                 </div>
-
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-semibold text-slate-500">仕入れ額</p>
+                    <p class="text-xs font-semibold text-slate-500">仕入・原価</p>
                     <h3 class="text-lg font-extrabold text-amber-600 mt-1" id="corpCost">¥0</h3>
-                    <div class="mt-1 text-xs text-slate-500 flex justify-between">
-                        <span>粗利: <strong id="corpGrossProfit">¥0</strong></span>
-                    </div>
                 </div>
-
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-semibold text-slate-500">販売管理費・経費</p>
+                    <p class="text-xs font-semibold text-slate-500">販管費・経費</p>
                     <h3 class="text-lg font-extrabold text-rose-600 mt-1" id="corpExpenses">¥0</h3>
-                    <p class="text-[11px] text-slate-400 mt-1">役員報酬含む</p>
                 </div>
-
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                     <p class="text-xs font-semibold text-slate-500">営業損益 (税引前)</p>
                     <h3 class="text-lg font-extrabold text-indigo-900 mt-1" id="corpNetProfit">¥0</h3>
-                    <div class="mt-1 text-xs text-slate-500 flex justify-between">
-                        <span>利益率:</span>
-                        <span id="corpNetMargin" class="font-bold text-indigo-600">0%</span>
-                    </div>
-                </div>
-
-                <!-- 繰越欠損金（赤字通算） -->
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-amber-300 bg-amber-50/30">
-                    <p class="text-xs font-bold text-amber-800 uppercase flex items-center justify-between">
-                        <span>繰越欠損金</span>
-                        <i class="fa-solid fa-shield-halved text-amber-600"></i>
-                    </p>
-                    <h3 class="text-lg font-bold text-amber-700 mt-1" id="corpRemainingLoss">¥0</h3>
-                    <p class="text-[10px] text-slate-500 mt-1">※黒字時に通算控除</p>
-                </div>
-
-                <!-- 概算法人税等 ＆ 税引後最終利益 -->
-                <div class="bg-white p-4 rounded-xl shadow-sm border-2 border-indigo-400 bg-gradient-to-br from-indigo-50/70 to-white">
-                    <p class="text-xs font-bold text-indigo-800">概算法人税等</p>
-                    <h3 class="text-base font-extrabold text-rose-700 mt-0.5" id="corpEstimatedTax">¥0</h3>
-                    <div class="mt-1 flex justify-between text-[11px] text-slate-600">
-                        <span>通算控除:</span>
-                        <span id="corpLossDeduction" class="font-bold text-amber-600">-¥0</span>
-                    </div>
-                    <div class="mt-1 pt-1 border-t border-slate-200 flex justify-between items-center">
-                        <span class="text-xs font-bold text-slate-700">最終純利益:</span>
-                        <strong class="text-sm font-black text-emerald-600" id="corpProfitAfterTax">¥0</strong>
-                    </div>
                 </div>
             </div>
 
-            <!-- 法人グラフ ＆ 明細エリア -->
+            <!-- 法人 明細 ＆ チャート -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- 左2列: 明細テーブル or 通期月別表 -->
                 <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div id="corpDetailHeader" class="p-4 border-b border-slate-100 flex items-center justify-between">
-                        <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-list-check text-indigo-600"></i>
-                            <span id="corpDetailTitle">当月の明細データ</span>
-                        </h2>
+                    <div class="p-4 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-800 text-sm">当月の明細データ</h2>
                     </div>
-                    
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100">
-                                <tr id="corpTableHeader">
-                                    <th class="py-3 px-4">日付</th>
-                                    <th class="py-3 px-4">区分</th>
-                                    <th class="py-3 px-4">項目/メモ</th>
-                                    <th class="py-3 px-4 text-right">金額</th>
-                                    <th class="py-3 px-4 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="corpTransactionList" class="divide-y divide-slate-100">
-                                <!-- JSで描画 -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="corpEmptyState" class="hidden py-10 text-center text-slate-400">
-                        <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
-                        <p class="text-xs">データがありません。「入力」ボタンから登録してください。</p>
-                    </div>
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-slate-500 text-xs border-b border-slate-100">
+                            <tr>
+                                <th class="py-3 px-4">日付</th>
+                                <th class="py-3 px-4">区分</th>
+                                <th class="py-3 px-4">メモ</th>
+                                <th class="py-3 px-4 text-right">金額</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corpTransactionList" class="divide-y divide-slate-100"></tbody>
+                    </table>
                 </div>
-
-                <!-- 右1列: チャート -->
-                <div class="space-y-6">
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                        <h3 class="font-bold text-slate-800 text-xs mb-3 flex items-center gap-2">
-                            <i class="fa-solid fa-chart-line text-indigo-600"></i>
-                            <span id="corpChartTitle">月別収支バランス</span>
-                        </h3>
-                        <div class="relative h-56">
-                            <canvas id="corpChart"></canvas>
-                        </div>
-                    </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h3 class="font-bold text-slate-800 text-xs mb-3">収支バランス</h3>
+                    <div class="relative h-56"><canvas id="corpChart"></canvas></div>
                 </div>
             </div>
         </div>
 
-        <!-- ==========================================
-             2. 個人事業主ビュー (Personal View)
-             ========================================== -->
+        <!-- 2. 個人事業主ビュー -->
         <div id="personalView" class="hidden space-y-6">
-            
-            <!-- 個人事業主用 期間選択 (1月〜12月) -->
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-                <div id="persMonthlyControl" class="flex items-center space-x-3">
-                    <button onclick="changeMonth(-1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <input type="month" id="persMonthPicker" onchange="onPersMonthPickerChange(event)" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <button onclick="changeMonth(1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-
-                <div id="persYearlyControl" class="hidden flex items-center space-x-3">
-                    <button onclick="changeCalendarYear(-1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <select id="persCalendarYearPicker" onchange="onPersCalendarYearPickerChange(event)" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
-                    </select>
-                    <button onclick="changeCalendarYear(1)" class="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-
-                <div class="text-xs text-slate-600 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 flex items-center space-x-2">
-                    <i class="fa-solid fa-user-check text-emerald-600"></i>
-                    <span id="persCalendarRangeText">期間: 1月〜12月 (暦年・確定申告単位)</span>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                <input type="month" id="persMonthPicker" onchange="renderPersonal()" class="text-base font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg px-3 py-1 focus:outline-none">
+                <div class="text-xs text-slate-600 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                    期間: 1月〜12月 (暦年単位)
                 </div>
             </div>
 
-            <!-- 個人事業主 KPIカード -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <!-- 個人KPI -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-semibold text-slate-500">年間売上高</p>
+                    <p class="text-xs font-semibold text-slate-500">売上高</p>
                     <h3 class="text-lg font-extrabold text-slate-900 mt-1" id="persSales">¥0</h3>
-                    <p class="text-[11px] text-slate-400 mt-1">個人事業 総収入</p>
                 </div>
-
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                    <p class="text-xs font-semibold text-slate-500">必要経費合計</p>
+                    <p class="text-xs font-semibold text-slate-500">必要経費</p>
                     <h3 class="text-lg font-extrabold text-rose-600 mt-1" id="persExpenses">¥0</h3>
-                    <p class="text-[11px] text-slate-400 mt-1">仕入・事業経費</p>
                 </div>
-
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                     <p class="text-xs font-semibold text-slate-500">差引事業所得</p>
                     <h3 class="text-lg font-extrabold text-emerald-700 mt-1" id="persNetProfit">¥0</h3>
-                    <p class="text-[11px] text-slate-500 mt-1">青色控除前: <span id="persBlueDeductionLabel" class="font-semibold text-emerald-600">控除65万</span></p>
                 </div>
-
-                <!-- 確定申告・各種税金概算 (所得税・住民税・事業税・国保等) -->
-                <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 bg-emerald-50/30">
-                    <p class="text-xs font-bold text-emerald-800 uppercase flex items-center justify-between">
-                        <span>概算 税金・社保合計</span>
-                        <i class="fa-solid fa-calculator text-emerald-600"></i>
-                    </p>
-                    <h3 class="text-lg font-bold text-rose-700 mt-1" id="persEstimatedTotalTax">¥0</h3>
-                    <p class="text-[10px] text-slate-500 mt-1">※所得税・住民税・事業税・国保等概算</p>
-                </div>
-
-                <!-- 🚨 確定申告用「納税キープ額（手元に寄せておく金額）」カード -->
-                <div class="bg-gradient-to-br from-amber-500 to-amber-600 text-white p-4 rounded-xl shadow-md border border-amber-400">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold tracking-wider uppercase bg-black/20 px-2 py-0.5 rounded">納税プール推奨額</span>
-                        <i class="fa-solid fa-piggy-bank text-xl text-amber-200"></i>
-                    </div>
+                <div class="bg-amber-500 text-white p-4 rounded-xl shadow-md">
+                    <p class="text-xs font-bold uppercase">納税プール推奨額</p>
                     <h3 class="text-xl font-black mt-1" id="persKeepAmount">¥0</h3>
-                    <p class="text-[10px] text-amber-100 mt-1">確定申告に備えて取っておくべき準備金</p>
                 </div>
             </div>
 
-            <!-- 個人事業単体 会社員換算ミニカード -->
-            <div class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-4 rounded-xl shadow-md border border-blue-800 flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center space-x-3">
-                    <div class="bg-blue-600/40 p-2.5 rounded-xl border border-blue-400/30">
-                        <i class="fa-solid fa-user-tie text-2xl text-blue-300"></i>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-blue-300 uppercase tracking-wide">個人事業の手取りから換算</span>
-                            <span class="text-[10px] bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full">会社員相当年収</span>
-                        </div>
-                        <p class="text-xs text-slate-300 mt-0.5">この個人事業手取り（<span id="persTakeHomeText">¥0</span>）を会社員として得る場合に必要な額面年収</p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <div class="text-2xl font-black text-amber-300" id="persEquivSalary">¥0</div>
-                    <div class="text-[11px] text-slate-300 mt-0.5">総人件費コスト価値: <strong id="persEquivCompanyCost" class="text-white">¥0</strong></div>
-                </div>
-            </div>
-
-            <!-- 個人事業主 明細 & グラフ -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- 明細/集計 -->
                 <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-4 border-b border-slate-100 flex items-center justify-between">
-                        <h2 class="font-bold text-slate-800 text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-user-pen text-emerald-600"></i>
-                            <span id="persDetailTitle">個人事業主の明細データ</span>
-                        </h2>
+                    <div class="p-4 border-b border-slate-100">
+                        <h2 class="font-bold text-slate-800 text-sm">明細データ</h2>
                     </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
-                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase border-b border-slate-100">
-                                <tr>
-                                    <th class="py-3 px-4">日付</th>
-                                    <th class="py-3 px-4">区分</th>
-                                    <th class="py-3 px-4">項目/メモ</th>
-                                    <th class="py-3 px-4 text-right">金額</th>
-                                    <th class="py-3 px-4 text-center">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody id="persTransactionList" class="divide-y divide-slate-100">
-                                <!-- JS描画 -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="persEmptyState" class="hidden py-10 text-center text-slate-400">
-                        <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
-                        <p class="text-xs">データがありません。「入力」ボタンから登録してください。</p>
-                    </div>
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-slate-500 text-xs border-b border-slate-100">
+                            <tr>
+                                <th class="py-3 px-4">日付</th>
+                                <th class="py-3 px-4">区分</th>
+                                <th class="py-3 px-4">メモ</th>
+                                <th class="py-3 px-4 text-right">金額</th>
+                            </tr>
+                        </thead>
+                        <tbody id="persTransactionList" class="divide-y divide-slate-100"></tbody>
+                    </table>
                 </div>
-
-                <!-- 確定申告 税金内訳ガイド -->
-                <div class="space-y-4">
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                        <h3 class="font-bold text-slate-800 text-xs flex items-center gap-2 border-b border-slate-100 pb-2">
-                            <i class="fa-solid fa-file-invoice-dollar text-emerald-600"></i>
-                            確定申告での概算税金内訳
-                        </h3>
-                        
-                        <div class="space-y-2 text-xs">
-                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span class="text-slate-600">所得税 ＋ 復興税:</span>
-                                <strong id="taxIncomeTax" class="font-semibold text-slate-800">¥0</strong>
-                            </div>
-                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span class="text-slate-600">住民税 (一律10%):</span>
-                                <strong id="taxResidentTax" class="font-semibold text-slate-800">¥0</strong>
-                            </div>
-                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span class="text-slate-600">個人事業税 (290万超分):</span>
-                                <strong id="taxBusinessTax" class="font-semibold text-slate-800">¥0</strong>
-                            </div>
-                            <div class="flex justify-between items-center py-1 border-b border-slate-50">
-                                <span class="text-slate-600 flex items-center gap-1">
-                                    <span>国民健康保険・年金:</span>
-                                    <span id="healthInsuranceTag" class="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.2 rounded font-bold">法人社保加入</span>
-                                </span>
-                                <strong id="taxHealthInsurance" class="font-semibold text-slate-800">¥0</strong>
-                            </div>
-                        </div>
-
-                        <div class="bg-amber-50 p-2.5 rounded-lg border border-amber-100 text-[11px] text-amber-900 leading-relaxed">
-                            <i class="fa-solid fa-circle-info text-amber-600 mr-1"></i>
-                            青色申告特別控除（65万円）等を適用した確定申告用の納税概算です。法人の社会保険に入っているため個人側の国保・年金は不要として計算しています。
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                        <h3 class="font-bold text-slate-800 text-xs mb-3 flex items-center gap-2">
-                            <i class="fa-solid fa-chart-column text-emerald-600"></i>
-                            1月〜12月 売上・所得推移
-                        </h3>
-                        <div class="relative h-44">
-                            <canvas id="persChart"></canvas>
-                        </div>
-                    </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h3 class="font-bold text-slate-800 text-xs mb-3">収支推移</h3>
+                    <div class="relative h-56"><canvas id="persChart"></canvas></div>
                 </div>
             </div>
         </div>
 
-        <!-- ==========================================
-             3. 統合（法人役員報酬 ＋ 個人事業所得 ＋ 会社員比較）ビュー
-             ========================================== -->
+        <!-- 3. 統合比較ビュー -->
         <div id="combinedView" class="hidden space-y-6">
-            
-            <div class="bg-indigo-900 text-white p-6 rounded-2xl shadow-md border border-indigo-800 relative overflow-hidden">
-                <div class="absolute right-0 top-0 translate-x-4 -translate-y-4 opacity-10 pointer-events-none">
-                    <i class="fa-solid fa-scale-balanced text-9xl"></i>
-                </div>
-                <h2 class="text-lg font-extrabold flex items-center gap-2">
-                    <i class="fa-solid fa-coins text-amber-400"></i>
-                    法人役員報酬 ✕ 個人事業所得 統合通算 ＆ 会社員年収換算
-                </h2>
-                <p class="text-xs text-indigo-200 mt-1 max-w-2xl leading-relaxed">
-                    法人の経営者としての「役員報酬」と、個人事業主としての「事業所得」を合算通算。個人の実質手取り額から**「もし会社員だったら額面年収でどれくらいに相当するのか」**を一目で比較できます。
-                </p>
-            </div>
-
-            <!-- 統合分析カード -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- 法人役員報酬カード -->
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <span class="text-xs font-bold text-indigo-600 uppercase">🏢 法人からの役員報酬</span>
-                        <i class="fa-solid fa-building-user text-indigo-400"></i>
-                    </div>
-                    <div>
-                        <p class="text-xs text-slate-500">年間 役員報酬(額面総額)</p>
-                        <h4 class="text-xl font-black text-slate-800 mt-0.5" id="combCorpSalary">¥0</h4>
-                    </div>
-                    <div class="bg-slate-50 p-2.5 rounded-lg text-xs space-y-1">
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">給与所得控除後:</span>
-                            <strong id="combCorpSalaryAfterDeduction" class="text-slate-700">¥0</strong>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">概算手取り額:</span>
-                            <strong id="combCorpSalaryTakeHome" class="text-indigo-600">¥0</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 個人事業所得カード -->
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-2">
-                        <span class="text-xs font-bold text-emerald-600 uppercase">👤 個人事業主の事業所得</span>
-                        <i class="fa-solid fa-briefcase text-emerald-400"></i>
-                    </div>
-                    <div>
-                        <p class="text-xs text-slate-500">年間 事業所得(青色控除後)</p>
-                        <h4 class="text-xl font-black text-slate-800 mt-0.5" id="combPersonalIncome">¥0</h4>
-                    </div>
-                    <div class="bg-slate-50 p-2.5 rounded-lg text-xs space-y-1">
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">事業売上総額:</span>
-                            <strong id="combPersonalSales" class="text-slate-700">¥0</strong>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500">事業手取り概算:</span>
-                            <strong id="combPersonalTakeHome" class="text-emerald-600">¥0</strong>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 総合個人所得 & 手取り -->
-                <div class="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-5 rounded-xl shadow-md space-y-3">
-                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span class="text-xs font-bold text-amber-400 uppercase">🔥 合計総合手取り</span>
-                        <i class="fa-solid fa-wallet text-amber-400"></i>
-                    </div>
-                    <div>
-                        <p class="text-xs text-slate-300">個人 総合手取り概算合計</p>
-                        <h4 class="text-2xl font-black text-amber-300 mt-0.5" id="combTotalTakeHome">¥0</h4>
-                    </div>
-                    <div class="bg-white/10 p-2.5 rounded-lg text-xs space-y-1">
-                        <div class="flex justify-between">
-                            <span class="text-slate-300">合算 総売上/収入:</span>
-                            <strong id="combTotalGrossRevenue" class="text-white">¥0</strong>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-300">個人側 納税＆社保合計:</span>
-                            <strong id="combTotalPersonalTax" class="text-rose-300">¥0</strong>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 👔 会社員換算（給与所得者なら年収いくらか？）メインカード -->
-            <div class="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-800 text-white p-6 rounded-2xl shadow-lg border border-blue-400 relative overflow-hidden">
-                <div class="absolute -right-6 -bottom-6 text-white/10 pointer-events-none">
-                    <i class="fa-solid fa-user-tie text-[160px]"></i>
-                </div>
-                
-                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-                    <div class="space-y-2 max-w-xl">
-                        <div class="flex items-center gap-2">
-                            <span class="bg-amber-400 text-slate-900 font-extrabold text-xs px-2.5 py-0.5 rounded-full shadow">会社員 比較指標</span>
-                            <span class="text-xs text-blue-100 font-semibold">同じ手取りを得る場合の会社員額面年収</span>
-                        </div>
-                        <h3 class="text-xl sm:text-2xl font-black tracking-tight">
-                            会社員（給与所得者）だったら<br>
-                            年収 <span class="text-3xl sm:text-4xl text-amber-300 font-black underline decoration-amber-400 underline-offset-4" id="combEquivSalary">¥0</span> 相当
-                        </h3>
-                        <p class="text-xs text-blue-100 leading-relaxed">
-                            ※会社員としてこの手取り（<span id="combTakeHomeRef">¥0</span>）を得るには、額面年収で約 <strong id="combEquivSalaryInline" class="text-amber-200">¥0</strong> が必要です。（給与所得控除・社会保険料約15%・所得税・住民税を逆算試算）
-                        </p>
-                    </div>
-
-                    <!-- 内訳・コスト価値 -->
-                    <div class="bg-slate-900/60 backdrop-blur-md p-4 rounded-xl border border-white/20 text-xs space-y-2 min-w-[280px]">
-                        <p class="font-bold text-amber-300 border-b border-white/10 pb-1 text-center">🏢 会社員相当時の給与試算内訳</p>
-                        <div class="flex justify-between">
-                            <span class="text-slate-300">会社員 額面年収:</span>
-                            <strong class="text-white font-bold" id="combEquivGross">¥0</strong>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-300">社保本人負担 (約15%):</span>
-                            <strong class="text-rose-300" id="combEquivSocialIns">¥0</strong>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-300">所得税 ＋ 住民税:</span>
-                            <strong class="text-rose-300" id="combEquivTax">¥0</strong>
-                        </div>
-                        <div class="pt-1.5 border-t border-white/20 flex justify-between items-center">
-                            <span class="text-slate-200 font-bold">企業総人件費価値:</span>
-                            <strong class="text-emerald-300 font-black text-sm" id="combEquivCompanyCost">¥0</strong>
-                        </div>
-                        <p class="text-[10px] text-slate-400 text-right">※会社負担の社保(約15%)を含めた会社側の実質負担費用</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 所得構成ドーナツグラフ -->
-            <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                <h3 class="font-bold text-slate-800 text-xs mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-chart-pie text-indigo-600"></i>
-                    収入・所得プロファイル構成
-                </h3>
-                <div class="relative h-64">
-                    <canvas id="combChart"></canvas>
+            <div class="bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-800 text-white p-6 rounded-2xl shadow-lg">
+                <div class="space-y-2">
+                    <span class="bg-amber-400 text-slate-900 font-extrabold text-xs px-2.5 py-0.5 rounded-full">会社員 比較指標</span>
+                    <h3 class="text-xl sm:text-2xl font-black">
+                        同じ手取りを得る場合の会社員（給与所得者）換算年収
+                    </h3>
+                    <div class="text-3xl font-black text-amber-300 mt-2" id="equivSalaryText">¥0</div>
                 </div>
             </div>
         </div>
 
     </main>
 
-    <!-- ==========================================
-         モーダルダイアログ群
-         ========================================== -->
-    
-    <!-- 単発入力モーダル -->
-    <div id="itemModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden transform transition-all scale-95" id="modalContainer">
-            <div class="bg-slate-900 px-6 py-4 text-white flex justify-between items-center">
-                <h3 class="font-bold text-base" id="modalTitle">収支データの入力</h3>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-white transition">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <form id="transactionForm" onsubmit="handleFormSubmit(event)" class="p-6 space-y-4">
-                <input type="hidden" id="editId" value="">
-
-                <!-- 対象事業体 (法人 or 個人事業主) -->
+    <!-- 取引入力モータル -->
+    <div id="inputModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+            <h3 class="text-lg font-bold text-slate-800">取引データの新規登録</h3>
+            <form id="txForm" onsubmit="handleSaveTx(event)" class="space-y-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">対象区分</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <label class="cursor-pointer">
-                            <input type="radio" name="entity" value="corporate" id="formEntityCorp" checked class="peer sr-only">
-                            <div class="text-center py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 peer-checked:bg-indigo-50 peer-checked:border-indigo-600 peer-checked:text-indigo-700 transition">
-                                🏢 法人データ
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="entity" value="personal" id="formEntityPers" class="peer sr-only">
-                            <div class="text-center py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 peer-checked:bg-emerald-50 peer-checked:border-emerald-600 peer-checked:text-emerald-700 transition">
-                                👤 個人事業主データ
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 日付 -->
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">日付</label>
-                    <input type="date" id="formDate" required class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                </div>
-
-                <!-- 収支区分 -->
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">収支区分</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <label class="cursor-pointer">
-                            <input type="radio" name="type" value="売上" checked onchange="updateCategories()" class="peer sr-only">
-                            <div class="text-center py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 peer-checked:bg-blue-50 peer-checked:border-blue-500 peer-checked:text-blue-600 transition">
-                                売上
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="type" value="仕入れ" onchange="updateCategories()" class="peer sr-only">
-                            <div class="text-center py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 peer-checked:bg-amber-50 peer-checked:border-amber-500 peer-checked:text-amber-600 transition">
-                                仕入れ
-                            </div>
-                        </label>
-                        <label class="cursor-pointer">
-                            <input type="radio" name="type" value="経費" onchange="updateCategories()" class="peer sr-only">
-                            <div class="text-center py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 peer-checked:bg-rose-50 peer-checked:border-rose-500 peer-checked:text-rose-600 transition">
-                                経費
-                            </div>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- カテゴリ -->
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">カテゴリ</label>
-                    <select id="formCategory" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">対象事業体</label>
+                    <select id="txEntity" class="w-full text-sm border border-slate-300 rounded-lg p-2">
+                        <option value="corporate">🏢 法人</option>
+                        <option value="personal">👤 個人事業主</option>
                     </select>
                 </div>
-
-                <!-- 金額 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">日付</label>
+                    <input type="date" id="txDate" required class="w-full text-sm border border-slate-300 rounded-lg p-2">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">区分</label>
+                    <select id="txCategory" class="w-full text-sm border border-slate-300 rounded-lg p-2">
+                        <option value="sales">売上</option>
+                        <option value="cost">仕入・原価</option>
+                        <option value="expense">経費</option>
+                    </select>
+                </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">金額 (円)</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-2 text-slate-400 font-bold">¥</span>
-                        <input type="number" id="formAmount" min="0" step="1" required placeholder="0" class="w-full border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    </div>
+                    <input type="number" id="txAmount" required min="0" class="w-full text-sm border border-slate-300 rounded-lg p-2" placeholder="100000">
                 </div>
-
-                <!-- 備考 -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">メモ / 内容</label>
-                    <input type="text" id="formMemo" placeholder="例: 役員報酬、商品売上、オフィス家賃等" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">メモ</label>
+                    <input type="text" id="txMemo" class="w-full text-sm border border-slate-300 rounded-lg p-2" placeholder="摘要・備考">
                 </div>
-
-                <div class="flex justify-end space-x-2 pt-4 border-t border-slate-100">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
-                    <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow">保存する</button>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">キャンセル</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">保存</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- 一括入力モーダル -->
-    <div id="bulkModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl mx-4 overflow-hidden transform transition-all scale-95 flex flex-col max-h-[90vh]" id="bulkModalContainer">
-            <div class="bg-purple-700 px-6 py-4 text-white flex justify-between items-center">
-                <h3 class="font-bold text-base"><i class="fa-solid fa-table-list mr-2"></i>収支データの一括登録</h3>
-                <button onclick="closeBulkModal()" class="text-purple-200 hover:text-white transition">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            
-            <div class="p-6 overflow-y-auto flex-1 space-y-4">
-                <!-- 対象事業体の選択 -->
-                <div class="bg-purple-50 p-3 rounded-xl border border-purple-100 flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center space-x-2">
-                        <span class="text-xs font-bold text-purple-900">登録先区分:</span>
-                        <select id="bulkEntitySelect" class="bg-white border border-purple-200 font-bold text-xs rounded-lg px-3 py-1.5 focus:outline-none text-purple-900">
-                            <option value="corporate" selected>🏢 法人データとして一括登録</option>
-                            <option value="personal">👤 個人事業主データとして一括登録</option>
-                        </select>
-                    </div>
-                    <p class="text-[11px] text-purple-700">Excel等からのコピペは「テキスト貼り付け」タブをご活用ください。</p>
-                </div>
-
-                <!-- モード切替タブ -->
-                <div class="flex space-x-2 border-b border-slate-200 pb-2">
-                    <button type="button" id="bulkTabForm" onclick="switchBulkMode('form')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white">テーブル入力</button>
-                    <button type="button" id="bulkTabText" onclick="switchBulkMode('text')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200">テキスト/CSV貼り付け</button>
-                </div>
-
-                <!-- テーブル入力モード -->
-                <div id="bulkFormMode" class="space-y-3">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-100 text-slate-600 uppercase">
-                                <tr>
-                                    <th class="py-2 px-2 w-32">日付</th>
-                                    <th class="py-2 px-2 w-28">区分</th>
-                                    <th class="py-2 px-2 w-36">カテゴリ</th>
-                                    <th class="py-2 px-2 w-32">金額(円)</th>
-                                    <th class="py-2 px-2">メモ</th>
-                                    <th class="py-2 px-2 w-10 text-center">削除</th>
-                                </tr>
-                            </thead>
-                            <tbody id="bulkTableBody" class="divide-y divide-slate-100">
-                            </tbody>
-                        </table>
-                    </div>
-                    <button type="button" onclick="addBulkRow()" class="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition border border-purple-200 flex items-center gap-1">
-                        <i class="fa-solid fa-plus"></i> 行を追加
-                    </button>
-                </div>
-
-                <!-- テキスト貼り付けモード -->
-                <div id="bulkTextMode" class="hidden space-y-2">
-                    <p class="text-xs text-slate-500">1行ごとにカンマ(,)またはタブ区切りで入力してください。<br>フォーマット: <code class="bg-slate-100 px-1 py-0.5 rounded text-rose-600">日付, 区分, カテゴリ, 金額, メモ</code></p>
-                    <textarea id="bulkTextarea" rows="8" placeholder="例:&#10;2024-10-15, 売上, 商品販売, 500000, 〇〇商事売上&#10;2024-10-25, 経費, 役員報酬・給料, 300000, 10月分役員報酬&#10;2024-11-01, 経費, 地代家賃, 150000, オフィス家賃" class="w-full font-mono text-xs p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
-                </div>
-            </div>
-
-            <div class="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-end space-x-2">
-                <button type="button" onclick="closeBulkModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded-lg">キャンセル</button>
-                <button type="button" onclick="submitBulkData()" class="px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-500 rounded-lg shadow">一括登録を実行</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 各種設定モーダル -->
-    <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity duration-200">
-        <div class="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden transform transition-all scale-95" id="settingsModalContainer">
-            <div class="bg-slate-900 px-6 py-4 text-white flex justify-between items-center">
-                <h3 class="font-bold text-base"><i class="fa-solid fa-sliders mr-2"></i>創業・決算・申告設定</h3>
-                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white transition">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <form onsubmit="saveSettings(event)" class="p-6 space-y-4">
-                <div class="border-b border-slate-100 pb-3">
-                    <h4 class="font-bold text-xs text-indigo-600 uppercase mb-2">🏢 法人設定</h4>
-                    <!-- 創業年月 -->
-                    <div class="mb-3">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">創業年月</label>
-                        <input type="month" id="settingFoundingDate" value="2024-10" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500">
-                    </div>
-                    <!-- 決算期開始月 -->
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">決算期の開始月</label>
-                        <select id="settingStartMonth" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500">
-                            <option value="10" selected>10月開始 (10月〜翌9月決算)</option>
-                            <option value="1">1月開始 (1月〜12月)</option>
-                            <option value="4">4月開始 (4月〜翌3月)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="font-bold text-xs text-emerald-600 uppercase mb-2">👤 個人事業主設定</h4>
-                    <!-- 青色申告特別控除 -->
-                    <div class="mb-3">
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">青色申告特別控除額</label>
-                        <select id="settingBlueDeduction" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500">
-                            <option value="650000" selected>青色申告 65万円控除 (e-Tax / 電子帳簿)</option>
-                            <option value="550000">青色申告 55万円控除</option>
-                            <option value="100000">青色申告 10万円控除</option>
-                            <option value="0">白色申告 (0円)</option>
-                        </select>
-                    </div>
-                    <!-- 社会保険重複フラグ -->
-                    <div class="flex items-center gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                        <input type="checkbox" id="settingHasCorpInsurance" checked class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
-                        <label for="settingHasCorpInsurance" class="text-xs font-medium text-slate-700 cursor-pointer">
-                            法人で社会保険に加入済み<br>
-                            <span class="text-[10px] text-slate-400 font-normal">（個人事業側での国保・年金概算を0円に設定）</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="flex justify-end space-x-2 pt-4 border-t border-slate-100">
-                    <button type="button" onclick="closeSettingsModal()" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">キャンセル</button>
-                    <button type="submit" class="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow">設定を保存</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
+    <!-- JavaScript ロジック -->
     <script>
-        // --- データ状態 ＆ 設定 ---
-        const CATEGORIES = {
-            '売上': ['商品販売', 'サービス提供', '受託開発', '役員報酬', 'その他売上'],
-            '仕入れ': ['原材料仕入', '商品仕入', '外注加工費', 'その他仕入'],
-            '経費': ['役員報酬・給料', '通信費・光熱費', '地代家賃', '消耗品費', '広告宣伝費', '旅費交通費', '接待交際費', 'その他経費']
-        };
-
-        let appSettings = {
-            foundingYearMonth: '2024-10', // 2024年10月創業
-            fiscalStartMonth: 10,        // 10月〜9月決算
-            taxMode: 'sme',              // 中小法人軽減税率
-            taxRate: 30,
-            blueDeduction: 650000,       // 青色申告65万円控除
-            hasCorpSocialInsurance: true  // 法人で社会保険加入済み
-        };
-
-        // アクティブ表示モード
-        let currentEntity = 'corporate'; // 'corporate' | 'personal' | 'combined'
-        let currentSubView = 'monthly';  // 'monthly' | 'yearly'
-        
-        let currentCorpMonth = '2024-10';
-        let currentCorpFiscalYear = 2024; // 第1期 (2024/10〜2025/09)
-        let currentPersMonth = '2025-01';
-        let currentPersCalendarYear = 2025;
-
-        // 初期データ（法人＋個人事業主）
-        let items = [
-            // 法人第1期 (2024-10 〜 2025-09) 赤字ケース
-            { id: '101', entity: 'corporate', date: '2024-10-15', type: '売上', category: '商品販売', amount: 800000, memo: '法人創業初期売上' },
-            { id: '102', entity: 'corporate', date: '2024-10-25', type: '経費', category: '役員報酬・給料', amount: 300000, memo: '10月役員報酬' },
-            { id: '103', entity: 'corporate', date: '2024-10-28', type: '経費', category: '地代家賃', amount: 200000, memo: 'オフィス家賃' },
-            { id: '104', entity: 'corporate', date: '2024-11-10', type: '経費', category: '消耗品費', amount: 800000, memo: '開発PC・什器購入' },
-            { id: '105', entity: 'corporate', date: '2024-11-25', type: '経費', category: '役員報酬・給料', amount: 300000, memo: '11月役員報酬' },
-            { id: '106', entity: 'corporate', date: '2024-12-25', type: '経費', category: '役員報酬・給料', amount: 300000, memo: '12月役員報酬' },
-
-            // 法人第2期 (2025-10 〜 2026-09) 黒字ケース (赤字通算適用)
-            { id: '201', entity: 'corporate', date: '2025-10-15', type: '売上', category: '受託開発', amount: 3500000, memo: '第2期大型案件' },
-            { id: '202', entity: 'corporate', date: '2025-10-25', type: '経費', category: '役員報酬・給料', amount: 400000, memo: '役員報酬' },
-            { id: '203', entity: 'corporate', date: '2025-11-20', type: '仕入れ', category: '外注加工費', amount: 800000, memo: '外部委託' },
-
-            // 個人事業主データ (2025年1月〜12月)
-            { id: 'p01', entity: 'personal', date: '2025-01-15', type: '売上', category: 'サービス提供', amount: 350000, memo: '個人コンサル' },
-            { id: 'p02', entity: 'personal', date: '2025-01-20', type: '経費', category: '通信費・光熱費', amount: 25000, memo: 'ネット・電気代' },
-            { id: 'p03', entity: 'personal', date: '2025-02-15', type: '売上', category: 'サービス提供', amount: 400000, memo: 'デザイン制作' },
-            { id: 'p04', entity: 'personal', date: '2025-03-10', type: '売上', category: '受託開発', amount: 600000, memo: 'Webサイト構築' }
+        // デモ用ローカルデータ（Supabase未連携時にも動くフォールバック）
+        let transactions = [
+            { id: 1, entity: 'corporate', date: '2026-09-10', category: 'sales', amount: 800000, memo: 'クライアントA受託制作' },
+            { id: 2, entity: 'corporate', date: '2026-09-12', category: 'expense', amount: 120000, memo: 'オフィス家賃' },
+            { id: 3, entity: 'personal', date: '2026-09-05', category: 'sales', amount: 350000, memo: '個人執筆案件' },
+            { id: 4, entity: 'personal', date: '2026-09-14', category: 'expense', amount: 45000, memo: '書籍・勉強代' },
         ];
 
-        // チャートインスタンス
         let corpChartInstance = null;
         let persChartInstance = null;
-        let combChartInstance = null;
 
-        // 👔 会社員の給与手取り計算（額面Grossから手取りTakeHomeを求める）
-        function getEmployeeTaxDetail(gross) {
-            if (gross <= 0) return { gross: 0, socialInsurance: 0, tax: 0, takeHome: 0 };
+        document.addEventListener('DOMContentLoaded', () => {
+            const now = new Date().toISOString().substring(0, 7);
+            document.getElementById('corpMonthPicker').value = now;
+            document.getElementById('persMonthPicker').value = now;
+            document.getElementById('txDate').valueAsDate = new Date();
 
-            // 1. 社会保険料 (健康保険・厚生年金・雇用保険: 本人負担約14.8%、上限考慮)
-            let socialInsurance = Math.min(gross * 0.148, 1600000);
+            renderCorporate();
+            renderPersonal();
+            renderCombined();
+        });
 
-            // 2. 給与所得控除
-            let salaryDeduction = 0;
-            if (gross <= 1800000) salaryDeduction = Math.max(550000, gross * 0.4 - 100000);
-            else if (gross <= 3600000) salaryDeduction = gross * 0.3 + 80000;
-            else if (gross <= 6600000) salaryDeduction = gross * 0.2 + 440000;
-            else if (gross <= 8500000) salaryDeduction = gross * 0.1 + 1100000;
-            else salaryDeduction = 1950000;
+        function switchEntity(entity) {
+            document.getElementById('corporateView').classList.add('hidden');
+            document.getElementById('personalView').classList.add('hidden');
+            document.getElementById('combinedView').classList.add('hidden');
 
-            // 3. 課税所得 (基礎控除48万円)
-            let taxableIncome = Math.max(0, gross - salaryDeduction - socialInsurance - 480000);
+            document.getElementById('entityCorporateBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200";
+            document.getElementById('entityPersonalBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200";
+            document.getElementById('entityCombinedBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200";
 
-            // 4. 所得税 (累進課税) ＋ 復興所得税
-            let incomeTax = 0;
-            if (taxableIncome <= 1950000) incomeTax = taxableIncome * 0.05;
-            else if (taxableIncome <= 3300000) incomeTax = taxableIncome * 0.10 - 97500;
-            else if (taxableIncome <= 6950000) incomeTax = taxableIncome * 0.20 - 427500;
-            else if (taxableIncome <= 9000000) incomeTax = taxableIncome * 0.23 - 636000;
-            else if (taxableIncome <= 18000000) incomeTax = taxableIncome * 0.33 - 1536000;
-            else incomeTax = taxableIncome * 0.40 - 2796000;
-
-            incomeTax = incomeTax * 1.021; // 復興所得税
-
-            // 5. 住民税 (一律10%)
-            let residentTax = taxableIncome * 0.10;
-
-            let totalTax = Math.round(incomeTax + residentTax);
-            let takeHome = Math.round(gross - socialInsurance - totalTax);
-
-            return {
-                gross: Math.round(gross),
-                socialInsurance: Math.round(socialInsurance),
-                tax: totalTax,
-                takeHome: Math.round(takeHome)
-            };
-        }
-
-        // 👔 目標手取り額(targetTakeHome)から「会社員の額面年収(Gross)」を二分探索で逆算する関数
-        function calculateEquivalentSalary(targetTakeHome) {
-            if (targetTakeHome <= 0) {
-                return { grossSalary: 0, socialInsurance: 0, tax: 0, takeHome: 0, companyCost: 0 };
-            }
-
-            let low = targetTakeHome;
-            let high = targetTakeHome * 2.8; // 十分な上界
-            
-            for (let i = 0; i < 40; i++) {
-                let mid = (low + high) / 2;
-                let detail = getEmployeeTaxDetail(mid);
-                if (detail.takeHome < targetTakeHome) {
-                    low = mid;
-                } else {
-                    high = mid;
-                }
-            }
-
-            let grossSalary = Math.round((low + high) / 2);
-            let finalDetail = getEmployeeTaxDetail(grossSalary);
-
-            return {
-                grossSalary: finalDetail.gross,
-                socialInsurance: finalDetail.socialInsurance,
-                tax: finalDetail.tax,
-                takeHome: finalDetail.takeHome,
-                // 会社側負担の社会保険料（額面の約15%）を含めた会社人件費コスト価値
-                companyCost: Math.round(finalDetail.gross * 1.15)
-            };
-        }
-
-        // 法人：創業期からの赤字通算（繰越欠損金）計算
-        function calculateAllCorporateFiscalYears() {
-            const [fYear, fMonth] = appSettings.foundingYearMonth.split('-').map(Number);
-            const foundingFiscalYear = fMonth >= appSettings.fiscalStartMonth ? fYear : fYear - 1;
-
-            const corpItems = items.filter(i => i.entity === 'corporate');
-            const yearSet = new Set(corpItems.map(i => getCurrentFiscalYear(i.date.substring(0, 7), appSettings.fiscalStartMonth)));
-            yearSet.add(foundingFiscalYear);
-            yearSet.add(currentCorpFiscalYear);
-
-            const sortedYears = Array.from(yearSet).sort((a, b) => a - b);
-
-            let carryoverLoss = 0;
-            const fiscalResults = {};
-
-            sortedYears.forEach(y => {
-                const fiscalMonths = getFiscalMonthsList(y, appSettings.fiscalStartMonth);
-                let sales = 0, cost = 0, expenses = 0;
-
-                corpItems.forEach(item => {
-                    const itemYyyyMm = item.date.substring(0, 7);
-                    if (fiscalMonths.includes(itemYyyyMm)) {
-                        const amt = Number(item.amount);
-                        if (item.type === '売上') sales += amt;
-                        else if (item.type === '仕入れ') cost += amt;
-                        else if (item.type === '経費') expenses += amt;
-                    }
-                });
-
-                const grossProfit = sales - cost;
-                const netProfit = grossProfit - expenses;
-
-                let lossDeduction = 0;
-                let taxableIncome = 0;
-                let estimatedTax = 0;
-
-                if (netProfit < 0) {
-                    carryoverLoss += Math.abs(netProfit);
-                    taxableIncome = 0;
-                    estimatedTax = 0;
-                } else {
-                    lossDeduction = Math.min(netProfit, carryoverLoss);
-                    taxableIncome = netProfit - lossDeduction;
-                    carryoverLoss -= lossDeduction;
-
-                    // 法人税計算 (800万以下25%, 超34%)
-                    if (taxableIncome <= 8000000) {
-                        estimatedTax = taxableIncome * 0.25;
-                    } else {
-                        estimatedTax = (8000000 * 0.25) + ((taxableIncome - 8000000) * 0.34);
-                    }
-                }
-
-                fiscalResults[y] = {
-                    fiscalYear: y,
-                    periodNumber: Math.max(1, y - foundingFiscalYear + 1),
-                    sales, cost, expenses, grossProfit, netProfit,
-                    lossDeduction, taxableIncome, estimatedTax,
-                    profitAfterTax: netProfit - estimatedTax,
-                    remainingLoss: carryoverLoss
-                };
-            });
-
-            return fiscalResults;
-        }
-
-        // 個人事業主：確定申告・概算税金 ＆ 納税キープ額計算
-        function calculatePersonalTaxAndKeep(calendarYear) {
-            const persItems = items.filter(i => i.entity === 'personal' && i.date.startsWith(String(calendarYear)));
-            
-            let sales = 0, costAndExpenses = 0;
-            persItems.forEach(i => {
-                const amt = Number(i.amount);
-                if (i.type === '売上') sales += amt;
-                else costAndExpenses += amt;
-            });
-
-            // 青色控除前事業所得
-            const rawIncome = Math.max(0, sales - costAndExpenses);
-            // 青色申告特別控除
-            const blueDeduct = Math.min(rawIncome, appSettings.blueDeduction);
-            // 課税対象 事業所得
-            const businessIncome = rawIncome - blueDeduct;
-
-            // 各種控除 (基礎控除48万円等)
-            const basicDeduction = 480000;
-            const taxableIncome = Math.max(0, businessIncome - basicDeduction);
-
-            // 1. 所得税＋復興特別所得税 試算 (簡易累進課税)
-            let incomeTax = 0;
-            if (taxableIncome <= 1950000) incomeTax = taxableIncome * 0.05;
-            else if (taxableIncome <= 3300000) incomeTax = (taxableIncome * 0.10) - 97500;
-            else if (taxableIncome <= 6950000) incomeTax = (taxableIncome * 0.20) - 427500;
-            else incomeTax = (taxableIncome * 0.23) - 636000;
-
-            const reconTax = incomeTax * 0.021; // 復興税
-            const totalIncomeTax = Math.round(incomeTax + reconTax);
-
-            // 2. 住民税 (一律10%)
-            const residentTax = Math.round(taxableIncome * 0.10);
-
-            // 3. 個人事業税 (事業所得290万円超の分に約5%)
-            const businessTaxable = Math.max(0, rawIncome - 2900000);
-            const businessTax = Math.round(businessTaxable * 0.05);
-
-            // 4. 国民健康保険・年金 概算 (法人で社保加入済みの場合は0円)
-            const healthInsurance = appSettings.hasCorpSocialInsurance ? 0 : Math.round(businessIncome * 0.10);
-
-            const estimatedTotalTax = totalIncomeTax + residentTax + businessTax + healthInsurance;
-
-            // 個人事業の手取り概算
-            const personalTakeHome = Math.max(0, sales - costAndExpenses - estimatedTotalTax);
-
-            return {
-                sales,
-                expenses: costAndExpenses,
-                rawIncome,
-                blueDeduct,
-                businessIncome,
-                incomeTax: totalIncomeTax,
-                residentTax,
-                businessTax,
-                healthInsurance,
-                estimatedTotalTax,
-                personalTakeHome,
-                keepAmount: estimatedTotalTax // 確定申告用に手元にキープしておく推奨プール額
-            };
-        }
-
-        // UI描画メインタスク
-        function renderApp() {
-            if (currentEntity === 'corporate') {
+            if (entity === 'corporate') {
                 document.getElementById('corporateView').classList.remove('hidden');
-                document.getElementById('personalView').classList.add('hidden');
-                document.getElementById('combinedView').classList.add('hidden');
-                renderCorporateView();
-            } else if (currentEntity === 'personal') {
-                document.getElementById('corporateView').classList.add('hidden');
+                document.getElementById('entityCorporateBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md";
+                renderCorporate();
+            } else if (entity === 'personal') {
                 document.getElementById('personalView').classList.remove('hidden');
-                document.getElementById('combinedView').classList.add('hidden');
-                renderPersonalView();
+                document.getElementById('entityPersonalBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md";
+                renderPersonal();
             } else {
-                document.getElementById('corporateView').classList.add('hidden');
-                document.getElementById('personalView').classList.add('hidden');
                 document.getElementById('combinedView').classList.remove('hidden');
-                renderCombinedView();
+                document.getElementById('entityCombinedBtn').className = "flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-indigo-900 text-white shadow-md";
+                renderCombined();
             }
         }
 
-        // 1. 法人ビューの描画
-        function renderCorporateView() {
-            const isMonthly = currentSubView === 'monthly';
-            document.getElementById('corpMonthlyControl').classList.toggle('hidden', !isMonthly);
-            document.getElementById('corpYearlyControl').classList.toggle('hidden', isMonthly);
+        function renderCorporate() {
+            const month = document.getElementById('corpMonthPicker').value;
+            const filtered = transactions.filter(t => t.entity === 'corporate' && t.date.startsWith(month));
 
-            const corpItems = items.filter(i => i.entity === 'corporate');
-
-            if (isMonthly) {
-                document.getElementById('corpDetailTitle').textContent = `${currentCorpMonth} の法人明細データ`;
-                const monthItems = corpItems.filter(i => i.date.startsWith(currentCorpMonth));
-                
-                let sales = 0, cost = 0, expenses = 0;
-                monthItems.forEach(i => {
-                    const amt = Number(i.amount);
-                    if (i.type === '売上') sales += amt;
-                    else if (i.type === '仕入れ') cost += amt;
-                    else if (i.type === '経費') expenses += amt;
-                });
-
-                const grossProfit = sales - cost;
-                const netProfit = grossProfit - expenses;
-                const netMargin = sales > 0 ? ((netProfit / sales) * 100).toFixed(1) : 0;
-
-                document.getElementById('corpSales').textContent = formatCurrency(sales);
-                document.getElementById('corpCost').textContent = formatCurrency(cost);
-                document.getElementById('corpGrossProfit').textContent = formatCurrency(grossProfit);
-                document.getElementById('corpExpenses').textContent = formatCurrency(expenses);
-                document.getElementById('corpNetProfit').textContent = formatCurrency(netProfit);
-                document.getElementById('corpNetMargin').textContent = `${netMargin}%`;
-
-                // 法人税簡易概算（単月）
-                const tax = netProfit > 0 ? netProfit * 0.25 : 0;
-                document.getElementById('corpEstimatedTax').textContent = formatCurrency(tax);
-                document.getElementById('corpLossDeduction').textContent = '-¥0';
-                document.getElementById('corpRemainingLoss').textContent = '年次集計参照';
-                document.getElementById('corpProfitAfterTax').textContent = formatCurrency(netProfit - tax);
-
-                renderCorporateTable(monthItems);
-                renderCorporateChart([sales, cost, expenses], ['売上高', '仕入れ額', '経費']);
-            } else {
-                // 通期・年間レポート（赤字通算適用）
-                const allFiscalResults = calculateAllCorporateFiscalYears();
-                const res = allFiscalResults[currentCorpFiscalYear] || {
-                    sales: 0, cost: 0, expenses: 0, grossProfit: 0, netProfit: 0,
-                    lossDeduction: 0, taxableIncome: 0, estimatedTax: 0, profitAfterTax: 0, remainingLoss: 0
-                };
-
-                document.getElementById('corpDetailTitle').textContent = `第${res.periodNumber || 1}期 通期月別サマリー (${currentCorpFiscalYear}年10月〜)`;
-                document.getElementById('corpSales').textContent = formatCurrency(res.sales);
-                document.getElementById('corpCost').textContent = formatCurrency(res.cost);
-                document.getElementById('corpGrossProfit').textContent = formatCurrency(res.grossProfit);
-                document.getElementById('corpExpenses').textContent = formatCurrency(res.expenses);
-                document.getElementById('corpNetProfit').textContent = formatCurrency(res.netProfit);
-                document.getElementById('corpNetMargin').textContent = `${res.sales > 0 ? ((res.netProfit / res.sales) * 100).toFixed(1) : 0}%`;
-
-                document.getElementById('corpEstimatedTax').textContent = formatCurrency(res.estimatedTax);
-                document.getElementById('corpLossDeduction').textContent = `-${formatCurrency(res.lossDeduction)}`;
-                document.getElementById('corpRemainingLoss').textContent = formatCurrency(res.remainingLoss);
-                document.getElementById('corpProfitAfterTax').textContent = formatCurrency(res.profitAfterTax);
-
-                // 月別サマリー表示
-                const fiscalMonths = getFiscalMonthsList(currentCorpFiscalYear, appSettings.fiscalStartMonth);
-                renderCorporateFiscalSummaryTable(fiscalMonths, corpItems);
-            }
-        }
-
-        // 2. 個人事業主ビューの描画
-        function renderPersonalView() {
-            const isMonthly = currentSubView === 'monthly';
-            document.getElementById('persMonthlyControl').classList.toggle('hidden', !isMonthly);
-            document.getElementById('persYearlyControl').classList.toggle('hidden', isMonthly);
-
-            const yearTaxInfo = calculatePersonalTaxAndKeep(currentPersCalendarYear);
-
-            document.getElementById('persSales').textContent = formatCurrency(yearTaxInfo.sales);
-            document.getElementById('persExpenses').textContent = formatCurrency(yearTaxInfo.expenses);
-            document.getElementById('persNetProfit').textContent = formatCurrency(yearTaxInfo.businessIncome);
-            document.getElementById('persEstimatedTotalTax').textContent = formatCurrency(yearTaxInfo.estimatedTotalTax);
-            document.getElementById('persKeepAmount').textContent = formatCurrency(yearTaxInfo.keepAmount);
-
-            // 個人事業単体 会社員相当額の換算
-            const persEquiv = calculateEquivalentSalary(yearTaxInfo.personalTakeHome);
-            document.getElementById('persTakeHomeText').textContent = formatCurrency(yearTaxInfo.personalTakeHome);
-            document.getElementById('persEquivSalary').textContent = formatCurrency(persEquiv.grossSalary);
-            document.getElementById('persEquivCompanyCost').textContent = formatCurrency(persEquiv.companyCost);
-
-            // 税金内訳表示
-            document.getElementById('taxIncomeTax').textContent = formatCurrency(yearTaxInfo.incomeTax);
-            document.getElementById('taxResidentTax').textContent = formatCurrency(yearTaxInfo.residentTax);
-            document.getElementById('taxBusinessTax').textContent = formatCurrency(yearTaxInfo.businessTax);
-            document.getElementById('taxHealthInsurance').textContent = formatCurrency(yearTaxInfo.healthInsurance);
-            document.getElementById('healthInsuranceTag').textContent = appSettings.hasCorpSocialInsurance ? '法人社保適用 (¥0)' : '自己負担';
-
-            const persItems = items.filter(i => i.entity === 'personal');
-
-            if (isMonthly) {
-                document.getElementById('persDetailTitle').textContent = `${currentPersMonth} の個人事業明細`;
-                const monthItems = persItems.filter(i => i.date.startsWith(currentPersMonth));
-                renderPersonalTable(monthItems);
-            } else {
-                document.getElementById('persDetailTitle').textContent = `${currentPersCalendarYear}年 (1月〜12月) 月別一覧`;
-                renderPersonalYearlyTable(persItems);
-            }
-
-            renderPersonalChart(persItems, currentPersCalendarYear);
-        }
-
-        // 3. 統合（役員報酬 ＋ 個人事業所得 ＋ 会社員換算）ビューの描画
-        function renderCombinedView() {
-            // 法人の役員報酬を抽出
-            const corpItems = items.filter(i => i.entity === 'corporate' && i.date.startsWith(String(currentPersCalendarYear)));
-            let corpSalary = 0;
-            corpItems.forEach(i => {
-                if (i.type === '経費' && (i.category === '役員報酬・給料' || i.memo.includes('役員報酬'))) {
-                    corpSalary += Number(i.amount);
-                }
-            });
-
-            // 役員報酬給与所得控除後の概算
-            let salaryDeduction = 0;
-            if (corpSalary <= 1625000) salaryDeduction = 550000;
-            else if (corpSalary <= 1800000) salaryDeduction = corpSalary * 0.4 - 100000;
-            else salaryDeduction = corpSalary * 0.3 + 80000;
-            const corpSalaryIncome = Math.max(0, corpSalary - salaryDeduction);
-            const corpSalaryTakeHome = Math.round(corpSalary * 0.8); // 役員報酬概算手取り(約80%)
-
-            // 個人事業所得 ＆ 手取り
-            const persTaxInfo = calculatePersonalTaxAndKeep(currentPersCalendarYear);
-            
-            // 個人 総合手取り額 (役員報酬手取り ＋ 個人事業手取り)
-            const totalTakeHome = corpSalaryTakeHome + persTaxInfo.personalTakeHome;
-            const totalGrossRevenue = corpSalary + persTaxInfo.sales;
-
-            document.getElementById('combCorpSalary').textContent = formatCurrency(corpSalary);
-            document.getElementById('combCorpSalaryAfterDeduction').textContent = formatCurrency(corpSalaryIncome);
-            document.getElementById('combCorpSalaryTakeHome').textContent = formatCurrency(corpSalaryTakeHome);
-
-            document.getElementById('combPersonalIncome').textContent = formatCurrency(persTaxInfo.businessIncome);
-            document.getElementById('combPersonalSales').textContent = formatCurrency(persTaxInfo.sales);
-            document.getElementById('combPersonalTakeHome').textContent = formatCurrency(persTaxInfo.personalTakeHome);
-
-            document.getElementById('combTotalTakeHome').textContent = formatCurrency(totalTakeHome);
-            document.getElementById('combTotalGrossRevenue').textContent = formatCurrency(totalGrossRevenue);
-            document.getElementById('combTotalPersonalTax').textContent = formatCurrency(persTaxInfo.estimatedTotalTax);
-
-            // 👔 会社員換算年収（同じ手取りを得る場合の会社員額面年収）を逆算
-            const equiv = calculateEquivalentSalary(totalTakeHome);
-
-            document.getElementById('combEquivSalary').textContent = formatCurrency(equiv.grossSalary);
-            document.getElementById('combTakeHomeRef').textContent = formatCurrency(totalTakeHome);
-            document.getElementById('combEquivSalaryInline').textContent = formatCurrency(equiv.grossSalary);
-
-            document.getElementById('combEquivGross').textContent = formatCurrency(equiv.grossSalary);
-            document.getElementById('combEquivSocialIns').textContent = `- ${formatCurrency(equiv.socialInsurance)}`;
-            document.getElementById('combEquivTax').textContent = `- ${formatCurrency(equiv.tax)}`;
-            document.getElementById('combEquivCompanyCost').textContent = formatCurrency(equiv.companyCost);
-
-            renderCombinedChart(corpSalary, persTaxInfo.sales, persTaxInfo.expenses, totalTakeHome);
-        }
-
-        // テーブル描画ヘルパー
-        function renderCorporateTable(monthItems) {
-            const tbody = document.getElementById('corpTransactionList');
-            const emptyState = document.getElementById('corpEmptyState');
-            tbody.innerHTML = '';
-
-            if (monthItems.length === 0) {
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            emptyState.classList.add('hidden');
-
-            monthItems.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            monthItems.forEach(item => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-
-                let badge = 'bg-blue-100 text-blue-700';
-                if (item.type === '仕入れ') badge = 'bg-amber-100 text-amber-700';
-                if (item.type === '経費') badge = 'bg-rose-100 text-rose-700';
-
-                tr.innerHTML = `
-                    <td class="py-2.5 px-4 font-mono text-xs text-slate-600">${item.date}</td>
-                    <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-xs font-bold ${badge}">${item.type}</span></td>
-                    <td class="py-2.5 px-4"><div class="font-bold text-slate-800">${item.category}</div><div class="text-xs text-slate-400">${item.memo || ''}</div></td>
-                    <td class="py-2.5 px-4 text-right font-extrabold ${item.type === '売上' ? 'text-blue-600' : 'text-slate-800'}">${formatCurrency(item.amount)}</td>
-                    <td class="py-2.5 px-4 text-center">
-                        <button onclick="deleteItem('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function renderCorporateFiscalSummaryTable(fiscalMonths, corpItems) {
+            let sales = 0, cost = 0, expenses = 0;
             const tbody = document.getElementById('corpTransactionList');
             tbody.innerHTML = '';
 
-            fiscalMonths.forEach(yyyyMm => {
-                const mItems = corpItems.filter(i => i.date.startsWith(yyyyMm));
-                let sales = 0, cost = 0, exp = 0;
-                mItems.forEach(i => {
-                    const amt = Number(i.amount);
-                    if (i.type === '売上') sales += amt;
-                    else if (i.type === '仕入れ') cost += amt;
-                    else if (i.type === '経費') exp += amt;
-                });
-                const profit = sales - (cost + exp);
+            filtered.forEach(t => {
+                if (t.category === 'sales') sales += t.amount;
+                if (t.category === 'cost') cost += t.amount;
+                if (t.category === 'expense') expenses += t.amount;
 
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition cursor-pointer';
-                tr.onclick = () => {
-                    currentCorpMonth = yyyyMm;
-                    document.getElementById('corpMonthPicker').value = currentCorpMonth;
-                    switchSubView('monthly');
-                };
-
-                tr.innerHTML = `
-                    <td class="py-2.5 px-4 font-bold text-slate-800">${yyyyMm}月</td>
-                    <td class="py-2.5 px-4"><span class="text-xs text-slate-400">月次集計</span></td>
-                    <td class="py-2.5 px-4 text-xs text-slate-500">売上: ${formatCurrency(sales)} / 経費: ${formatCurrency(exp)}</td>
-                    <td class="py-2.5 px-4 text-right font-extrabold ${profit >= 0 ? 'text-indigo-600' : 'text-rose-600'}">${formatCurrency(profit)}</td>
-                    <td class="py-2.5 px-4 text-center text-xs text-indigo-600 font-bold">詳細 <i class="fa-solid fa-chevron-right text-[10px]"></i></td>
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="py-3 px-4">${t.date}</td>
+                        <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-xs font-bold ${t.category === 'sales' ? 'bg-indigo-100 text-indigo-700' : 'bg-rose-100 text-rose-700'}">${t.category}</span></td>
+                        <td class="py-3 px-4">${t.memo || '-'}</td>
+                        <td class="py-3 px-4 text-right font-bold">¥${t.amount.toLocaleString()}</td>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
             });
-        }
 
-        function renderPersonalTable(monthItems) {
-            const tbody = document.getElementById('persTransactionList');
-            const emptyState = document.getElementById('persEmptyState');
-            tbody.innerHTML = '';
+            const net = sales - cost - expenses;
+            document.getElementById('corpSales').innerText = `¥${sales.toLocaleString()}`;
+            document.getElementById('corpCost').innerText = `¥${cost.toLocaleString()}`;
+            document.getElementById('corpExpenses').innerText = `¥${expenses.toLocaleString()}`;
+            document.getElementById('corpNetProfit').innerText = `¥${net.toLocaleString()}`;
 
-            if (monthItems.length === 0) {
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            emptyState.classList.add('hidden');
-
-            monthItems.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-            monthItems.forEach(item => {
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition';
-
-                let badge = item.type === '売上' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
-
-                tr.innerHTML = `
-                    <td class="py-2.5 px-4 font-mono text-xs text-slate-600">${item.date}</td>
-                    <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-xs font-bold ${badge}">${item.type}</span></td>
-                    <td class="py-2.5 px-4"><div class="font-bold text-slate-800">${item.category}</div><div class="text-xs text-slate-400">${item.memo || ''}</div></td>
-                    <td class="py-2.5 px-4 text-right font-extrabold ${item.type === '売上' ? 'text-emerald-600' : 'text-slate-800'}">${formatCurrency(item.amount)}</td>
-                    <td class="py-2.5 px-4 text-center">
-                        <button onclick="deleteItem('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function renderPersonalYearlyTable(persItems) {
-            const tbody = document.getElementById('persTransactionList');
-            tbody.innerHTML = '';
-
-            for (let m = 1; m <= 12; m++) {
-                const mm = String(m).padStart(2, '0');
-                const yyyyMm = `${currentPersCalendarYear}-${mm}`;
-                const mItems = persItems.filter(i => i.date.startsWith(yyyyMm));
-
-                let sales = 0, exp = 0;
-                mItems.forEach(i => {
-                    const amt = Number(i.amount);
-                    if (i.type === '売上') sales += amt;
-                    else exp += amt;
-                });
-                const income = sales - exp;
-
-                const tr = document.createElement('tr');
-                tr.className = 'hover:bg-slate-50 transition cursor-pointer';
-                tr.onclick = () => {
-                    currentPersMonth = yyyyMm;
-                    document.getElementById('persMonthPicker').value = currentPersMonth;
-                    switchSubView('monthly');
-                };
-
-                tr.innerHTML = `
-                    <td class="py-2.5 px-4 font-bold text-slate-800">${m}月 (${yyyyMm})</td>
-                    <td class="py-2.5 px-4"><span class="text-xs text-emerald-600 font-bold">個人事業</span></td>
-                    <td class="py-2.5 px-4 text-xs text-slate-500">売上: ${formatCurrency(sales)} / 経費: ${formatCurrency(exp)}</td>
-                    <td class="py-2.5 px-4 text-right font-extrabold ${income >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${formatCurrency(income)}</td>
-                    <td class="py-2.5 px-4 text-center text-xs text-emerald-600 font-bold">明細 <i class="fa-solid fa-chevron-right text-[10px]"></i></td>
-                `;
-                tbody.appendChild(tr);
-            }
-        }
-
-        // グラフ描画
-        function renderCorporateChart(data, labels) {
+            // チャート描写
             const ctx = document.getElementById('corpChart').getContext('2d');
             if (corpChartInstance) corpChartInstance.destroy();
-
             corpChartInstance = new Chart(ctx, {
-                type: 'bar',
+                type: 'doughnut',
                 data: {
-                    labels: labels,
+                    labels: ['売上', '仕入', '経費'],
                     datasets: [{
-                        data: data,
-                        backgroundColor: ['#3b82f6', '#f59e0b', '#f43f5e'],
-                        borderRadius: 6
+                        data: [sales, cost, expenses],
+                        backgroundColor: ['#4f46e5', '#f59e0b', '#f43f5e']
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v.toLocaleString() } } }
-                }
+                options: { responsive: true, maintainAspectRatio: false }
             });
         }
 
-        function renderPersonalChart(persItems, calendarYear) {
+        function renderPersonal() {
+            const month = document.getElementById('persMonthPicker').value;
+            const filtered = transactions.filter(t => t.entity === 'personal' && t.date.startsWith(month));
+
+            let sales = 0, expenses = 0;
+            const tbody = document.getElementById('persTransactionList');
+            tbody.innerHTML = '';
+
+            filtered.forEach(t => {
+                if (t.category === 'sales') sales += t.amount;
+                else expenses += t.amount;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="py-3 px-4">${t.date}</td>
+                        <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-xs font-bold ${t.category === 'sales' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${t.category}</span></td>
+                        <td class="py-3 px-4">${t.memo || '-'}</td>
+                        <td class="py-3 px-4 text-right font-bold">¥${t.amount.toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+
+            const net = sales - expenses;
+            const taxKeep = Math.max(0, net * 0.2); // 概算税金キープ率 20%
+
+            document.getElementById('persSales').innerText = `¥${sales.toLocaleString()}`;
+            document.getElementById('persExpenses').innerText = `¥${expenses.toLocaleString()}`;
+            document.getElementById('persNetProfit').innerText = `¥${net.toLocaleString()}`;
+            document.getElementById('persKeepAmount').innerText = `¥${Math.round(taxKeep).toLocaleString()}`;
+
+            // チャート描写
             const ctx = document.getElementById('persChart').getContext('2d');
             if (persChartInstance) persChartInstance.destroy();
-
-            const salesData = [];
-            const incomeData = [];
-            const labels = [];
-
-            for (let m = 1; m <= 12; m++) {
-                labels.push(`${m}月`);
-                const mm = String(m).padStart(2, '0');
-                const mItems = persItems.filter(i => i.date.startsWith(`${calendarYear}-${mm}`));
-                let s = 0, e = 0;
-                mItems.forEach(i => {
-                    if (i.type === '売上') s += Number(i.amount);
-                    else e += Number(i.amount);
-                });
-                salesData.push(s);
-                incomeData.push(s - e);
-            }
-
             persChartInstance = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [
-                        { label: '売上高', data: salesData, backgroundColor: '#10b981', borderRadius: 4 },
-                        { label: '事業所得', data: incomeData, type: 'line', borderColor: '#047857', borderWidth: 2, fill: false }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10 } } } },
-                    scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v.toLocaleString() } } }
-                }
-            });
-        }
-
-        function renderCombinedChart(salary, persSales, persExpenses, takeHome) {
-            const ctx = document.getElementById('combChart').getContext('2d');
-            if (combChartInstance) combChartInstance.destroy();
-
-            combChartInstance = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['役員報酬(額面)', '個人事業売上', '個人事業経費', '個人実質手取り'],
+                    labels: ['売上', '必要経費', '所得'],
                     datasets: [{
-                        data: [salary, persSales, persExpenses, takeHome],
-                        backgroundColor: ['#6366f1', '#10b981', '#f43f5e', '#f59e0b']
+                        label: '金額',
+                        data: [sales, expenses, net],
+                        backgroundColor: ['#10b981', '#f43f5e', '#059669']
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
-                }
+                options: { responsive: true, maintainAspectRatio: false }
             });
         }
 
-        // 切替関数
-        function switchEntity(entity) {
-            currentEntity = entity;
-            document.getElementById('entityCorporateBtn').className = entity === 'corporate' 
-                ? 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md'
-                : 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200';
+        function renderCombined() {
+            const totalSales = transactions.filter(t => t.category === 'sales').reduce((acc, t) => acc + t.amount, 0);
+            const totalExpense = transactions.filter(t => t.category !== 'sales').reduce((acc, t) => acc + t.amount, 0);
+            const netTakeHome = totalSales - totalExpense;
 
-            document.getElementById('entityPersonalBtn').className = entity === 'personal'
-                ? 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-emerald-600 text-white shadow-md'
-                : 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200';
-
-            document.getElementById('entityCombinedBtn').className = entity === 'combined'
-                ? 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-900 text-white shadow-md'
-                : 'flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-slate-100 text-slate-600 hover:bg-slate-200';
-
-            document.getElementById('subViewContainer').style.display = entity === 'combined' ? 'none' : 'flex';
-
-            renderApp();
+            // 会社員換算（簡易ロジック: 手取り / 0.75）
+            const equivSalary = Math.round(netTakeHome / 0.75);
+            document.getElementById('equivSalaryText').innerText = `¥${equivSalary.toLocaleString()}`;
         }
 
-        function switchSubView(subView) {
-            currentSubView = subView;
-            document.getElementById('tabMonthly').className = subView === 'monthly'
-                ? 'px-3 py-1.5 rounded-lg font-bold text-xs bg-white text-slate-800 shadow-sm transition'
-                : 'px-3 py-1.5 rounded-lg font-bold text-xs text-slate-600 hover:text-slate-900 transition';
-
-            document.getElementById('tabYearly').className = subView === 'yearly'
-                ? 'px-3 py-1.5 rounded-lg font-bold text-xs bg-white text-slate-800 shadow-sm transition'
-                : 'px-3 py-1.5 rounded-lg font-bold text-xs text-slate-600 hover:text-slate-900 transition';
-
-            renderApp();
-        }
-
-        function changeMonth(delta) {
-            if (currentEntity === 'corporate') {
-                const [y, m] = currentCorpMonth.split('-').map(Number);
-                const d = new Date(y, m - 1 + delta, 1);
-                currentCorpMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                document.getElementById('corpMonthPicker').value = currentCorpMonth;
-            } else {
-                const [y, m] = currentPersMonth.split('-').map(Number);
-                const d = new Date(y, m - 1 + delta, 1);
-                currentPersMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                document.getElementById('persMonthPicker').value = currentPersMonth;
-            }
-            renderApp();
-        }
-
-        function changeFiscalYear(delta) {
-            currentCorpFiscalYear += delta;
-            document.getElementById('corpFiscalYearPicker').value = currentCorpFiscalYear;
-            renderApp();
-        }
-
-        function changeCalendarYear(delta) {
-            currentPersCalendarYear += delta;
-            document.getElementById('persCalendarYearPicker').value = currentPersCalendarYear;
-            renderApp();
-        }
-
-        function onCorpMonthPickerChange(e) {
-            currentCorpMonth = e.target.value;
-            renderApp();
-        }
-        function onCorpFiscalYearPickerChange(e) {
-            currentCorpFiscalYear = Number(e.target.value);
-            renderApp();
-        }
-        function onPersMonthPickerChange(e) {
-            currentPersMonth = e.target.value;
-            renderApp();
-        }
-        function onPersCalendarYearPickerChange(e) {
-            currentPersCalendarYear = Number(e.target.value);
-            renderApp();
-        }
-
-        // モーダル管理
+        // モーダル操作
         function openModal() {
-            document.getElementById('itemModal').classList.remove('hidden');
-            setTimeout(() => {
-                document.getElementById('itemModal').classList.remove('opacity-0');
-                document.getElementById('modalContainer').classList.remove('scale-95');
-            }, 10);
-            document.getElementById('formDate').value = new Date().toISOString().split('T')[0];
-            updateCategories();
+            document.getElementById('inputModal').classList.remove('hidden');
+            document.getElementById('inputModal').classList.add('flex');
         }
 
         function closeModal() {
-            document.getElementById('itemModal').classList.add('opacity-0');
-            document.getElementById('modalContainer').classList.add('scale-95');
-            setTimeout(() => {
-                document.getElementById('itemModal').classList.add('hidden');
-            }, 200);
+            document.getElementById('inputModal').classList.add('hidden');
+            document.getElementById('inputModal').classList.remove('flex');
         }
 
-        function updateCategories() {
-            const type = document.querySelector('input[name="type"]:checked').value;
-            const select = document.getElementById('formCategory');
-            select.innerHTML = '';
-            (CATEGORIES[type] || []).forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                select.appendChild(opt);
-            });
-        }
-
-        function handleFormSubmit(e) {
+        function handleSaveTx(e) {
             e.preventDefault();
-            const entity = document.querySelector('input[name="entity"]:checked').value;
-            const date = document.getElementById('formDate').value;
-            const type = document.querySelector('input[name="type"]:checked').value;
-            const category = document.getElementById('formCategory').value;
-            const amount = Number(document.getElementById('formAmount').value);
-            const memo = document.getElementById('formMemo').value;
+            const newTx = {
+                id: Date.now(),
+                entity: document.getElementById('txEntity').value,
+                date: document.getElementById('txDate').value,
+                category: document.getElementById('txCategory').value,
+                amount: parseFloat(document.getElementById('txAmount').value) || 0,
+                memo: document.getElementById('txMemo').value
+            };
 
-            items.push({
-                id: Date.now().toString(),
-                entity, date, type, category, amount, memo
-            });
-
+            transactions.push(newTx);
             closeModal();
-            renderApp();
+            
+            renderCorporate();
+            renderPersonal();
+            renderCombined();
         }
-
-        function deleteItem(id) {
-            items = items.filter(i => i.id !== id);
-            renderApp();
-        }
-
-        // 一括入力モーダル
-        let bulkMode = 'form';
-        function openBulkModal() {
-            const modal = document.getElementById('bulkModal');
-            document.getElementById('bulkTableBody').innerHTML = '';
-            for (let i = 0; i < 3; i++) addBulkRow();
-
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                modal.classList.remove('opacity-0');
-                document.getElementById('bulkModalContainer').classList.remove('scale-95');
-            }, 10);
-        }
-
-        function closeBulkModal() {
-            const modal = document.getElementById('bulkModal');
-            modal.classList.add('opacity-0');
-            document.getElementById('bulkModalContainer').classList.add('scale-95');
-            setTimeout(() => modal.classList.add('hidden'), 200);
-        }
-
-        function addBulkRow() {
-            const tbody = document.getElementById('bulkTableBody');
-            const rowId = Date.now() + Math.random().toString(36).substring(2, 5);
-            const tr = document.createElement('tr');
-            tr.id = `bulkRow_${rowId}`;
-
-            tr.innerHTML = `
-                <td class="py-1 px-2"><input type="date" value="${new Date().toISOString().split('T')[0]}" class="bulk-date w-full border rounded px-1.5 py-1 text-xs"></td>
-                <td class="py-1 px-2">
-                    <select class="bulk-type w-full border rounded px-1.5 py-1 text-xs" onchange="updateBulkCategoryOptions('${rowId}')">
-                        <option value="売上">売上</option>
-                        <option value="仕入れ">仕入れ</option>
-                        <option value="経費" selected>経費</option>
-                    </select>
-                </td>
-                <td class="py-1 px-2"><select class="bulk-category w-full border rounded px-1.5 py-1 text-xs" id="bulkCategory_${rowId}"></select></td>
-                <td class="py-1 px-2"><input type="number" placeholder="0" class="bulk-amount w-full border rounded px-1.5 py-1 text-xs font-bold"></td>
-                <td class="py-1 px-2"><input type="text" placeholder="メモ" class="bulk-memo w-full border rounded px-1.5 py-1 text-xs"></td>
-                <td class="py-1 px-2 text-center"><button type="button" onclick="document.getElementById('bulkRow_${rowId}').remove()" class="text-slate-400 hover:text-rose-600"><i class="fa-solid fa-trash-can"></i></button></td>
-            `;
-            tbody.appendChild(tr);
-            updateBulkCategoryOptions(rowId);
-        }
-
-        function updateBulkCategoryOptions(rowId) {
-            const tr = document.getElementById(`bulkRow_${rowId}`);
-            if (!tr) return;
-            const type = tr.querySelector('.bulk-type').value;
-            const select = document.getElementById(`bulkCategory_${rowId}`);
-            select.innerHTML = '';
-            (CATEGORIES[type] || []).forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c; opt.textContent = c;
-                select.appendChild(opt);
-            });
-        }
-
-        function switchBulkMode(mode) {
-            bulkMode = mode;
-            document.getElementById('bulkFormMode').classList.toggle('hidden', mode !== 'form');
-            document.getElementById('bulkTextMode').classList.toggle('hidden', mode === 'form');
-        }
-
-        function submitBulkData() {
-            const targetEntity = document.getElementById('bulkEntitySelect').value;
-            const newItems = [];
-
-            if (bulkMode === 'form') {
-                const rows = document.querySelectorAll('#bulkTableBody tr');
-                rows.forEach(tr => {
-                    const date = tr.querySelector('.bulk-date').value;
-                    const type = tr.querySelector('.bulk-type').value;
-                    const category = tr.querySelector('.bulk-category').value;
-                    const amount = Number(tr.querySelector('.bulk-amount').value || 0);
-                    const memo = tr.querySelector('.bulk-memo').value;
-
-                    if (date && amount > 0) {
-                        newItems.push({ id: Date.now().toString() + Math.random(), entity: targetEntity, date, type, category, amount, memo });
-                    }
-                });
-            } else {
-                const rawText = document.getElementById('bulkTextarea').value;
-                rawText.split('\n').forEach(line => {
-                    if (!line.trim()) return;
-                    const parts = line.split(/,|\t/).map(p => p.trim());
-                    if (parts.length >= 4) {
-                        const date = parts[0];
-                        const type = ['売上', '仕入れ', '経費'].includes(parts[1]) ? parts[1] : '経費';
-                        const category = parts[2];
-                        const amount = Number(parts[3]);
-                        const memo = parts[4] || '';
-                        if (date && amount > 0) {
-                            newItems.push({ id: Date.now().toString() + Math.random(), entity: targetEntity, date, type, category, amount, memo });
-                        }
-                    }
-                });
-            }
-
-            if (newItems.length > 0) {
-                items.push(...newItems);
-                closeBulkModal();
-                renderApp();
-            }
-        }
-
-        // 設定モーダル
-        function openSettingsModal() {
-            document.getElementById('settingFoundingDate').value = appSettings.foundingYearMonth;
-            document.getElementById('settingStartMonth').value = appSettings.fiscalStartMonth;
-            document.getElementById('settingBlueDeduction').value = appSettings.blueDeduction;
-            document.getElementById('settingHasCorpInsurance').checked = appSettings.hasCorpSocialInsurance;
-
-            document.getElementById('settingsModal').classList.remove('hidden');
-            setTimeout(() => {
-                document.getElementById('settingsModal').classList.remove('opacity-0');
-                document.getElementById('settingsModalContainer').classList.remove('scale-95');
-            }, 10);
-        }
-
-        function closeSettingsModal() {
-            document.getElementById('settingsModal').classList.add('opacity-0');
-            document.getElementById('settingsModalContainer').classList.add('scale-95');
-            setTimeout(() => document.getElementById('settingsModal').classList.add('hidden'), 200);
-        }
-
-        function saveSettings(e) {
-            e.preventDefault();
-            appSettings.foundingYearMonth = document.getElementById('settingFoundingDate').value;
-            appSettings.fiscalStartMonth = Number(document.getElementById('settingStartMonth').value);
-            appSettings.blueDeduction = Number(document.getElementById('settingBlueDeduction').value);
-            appSettings.hasCorpSocialInsurance = document.getElementById('settingHasCorpInsurance').checked;
-            closeSettingsModal();
-            renderApp();
-        }
-
-        // CSVエクスポート
-        function exportCSV() {
-            let csvContent = "\uFEFF事業体,日付,区分,カテゴリ,金額,メモ\n";
-            items.forEach(i => {
-                const entityName = i.entity === 'corporate' ? '法人' : '個人事業主';
-                csvContent += `"${entityName}","${i.date}","${i.type}","${i.category}",${i.amount},"${i.memo || ''}"\n`;
-            });
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `収支統合データ_${new Date().toISOString().split('T')[0]}.csv`;
-            a.click();
-        }
-
-        // ユーティリティ
-        function formatCurrency(num) {
-            return '¥' + Math.round(num).toLocaleString();
-        }
-
-        function getCurrentFiscalYear(yyyyMm, startMonth = 10) {
-            const [y, m] = yyyyMm.split('-').map(Number);
-            return m >= startMonth ? y : y - 1;
-        }
-
-        function getFiscalMonthsList(fiscalYear, startMonth = 10) {
-            const months = [];
-            for (let i = 0; i < 12; i++) {
-                let m = startMonth + i;
-                let y = fiscalYear;
-                if (m > 12) { m -= 12; y += 1; }
-                months.push(`${y}-${String(m).padStart(2, '0')}`);
-            }
-            return months;
-        }
-
-        // 初期化処理
-        window.onload = function() {
-            // 決算期・年度セレクターの初期化
-            const corpSelect = document.getElementById('corpFiscalYearPicker');
-            corpSelect.innerHTML = '';
-            for (let y = 2024; y <= 2030; y++) {
-                const opt = document.createElement('option');
-                opt.value = y;
-                opt.textContent = `第${y - 2024 + 1}期 (${y}年10月〜)`;
-                corpSelect.appendChild(opt);
-            }
-            document.getElementById('corpMonthPicker').value = currentCorpMonth;
-
-            const persSelect = document.getElementById('persCalendarYearPicker');
-            persSelect.innerHTML = '';
-            for (let y = 2024; y <= 2030; y++) {
-                const opt = document.createElement('option');
-                opt.value = y;
-                opt.textContent = `${y}年 (1月〜12月)`;
-                if (y === 2025) opt.selected = true;
-                persSelect.appendChild(opt);
-            }
-            document.getElementById('persMonthPicker').value = currentPersMonth;
-
-            renderApp();
-        };
     </script>
 </body>
 </html>
