@@ -36,6 +36,10 @@
             </div>
             
             <div class="flex items-center space-x-2">
+                <button onclick="fetchTransactions()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-slate-700 mr-1" title="最新データに更新">
+                    <i class="fa-solid fa-rotate text-xs"></i>
+                    <span class="hidden sm:inline">更新</span>
+                </button>
                 <button onclick="openModal('bulk')" class="bg-slate-700 hover:bg-slate-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 border border-slate-600">
                     <i class="fa-solid fa-list-check"></i>
                     <span>一括入力</span>
@@ -51,7 +55,7 @@
     <!-- メインコンテンツ -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
         
-        <!-- 事業体切り替え（エンティティ・タブ） -->
+        <!-- 事業体切り替えタブ -->
         <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
             <div class="flex space-x-1 sm:space-x-2 w-full md:w-auto">
                 <button id="entityCorporateBtn" onclick="switchEntity('corporate')" class="flex-1 md:flex-initial px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 bg-indigo-600 text-white shadow-md">
@@ -250,7 +254,7 @@
 
     </main>
 
-    <!-- 入力モータル（1行登録 / 一括入力 タブ対応） -->
+    <!-- 入力モーダル -->
     <div id="inputModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl">
             <div class="flex justify-between items-center border-b pb-3">
@@ -294,7 +298,7 @@
                 </div>
                 <div class="flex justify-end space-x-2 pt-2">
                     <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">キャンセル</button>
-                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">保存</button>
+                    <button type="submit" id="saveSingleBtn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold">保存</button>
                 </div>
             </form>
 
@@ -316,7 +320,7 @@
                 </div>
                 <div class="flex justify-end space-x-2 pt-2">
                     <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">キャンセル</button>
-                    <button type="submit" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold"><i class="fa-solid fa-upload mr-1"></i>一括登録実行</button>
+                    <button type="submit" id="saveBulkBtn" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold"><i class="fa-solid fa-upload mr-1"></i>一括登録実行</button>
                 </div>
             </form>
         </div>
@@ -324,28 +328,41 @@
 
     <!-- JavaScript ロジック -->
     <script>
-        // デモ用初期データ
-        let transactions = [
-            { id: 1, entity: 'corporate', date: '2026-09-10', category: 'sales', amount: 1200000, memo: '基幹システム受託開発' },
-            { id: 2, entity: 'corporate', date: '2026-09-12', category: 'expense', amount: 250000, memo: 'オフィス賃料・光熱費' },
-            { id: 3, entity: 'corporate', date: '2026-09-15', category: 'cost', amount: 300000, memo: '外部パートナー業務委託' },
-            { id: 4, entity: 'personal', date: '2026-09-05', category: 'sales', amount: 450000, memo: '個人コンサルティング業務' },
-            { id: 5, entity: 'personal', date: '2026-09-14', category: 'expense', amount: 60000, memo: '書籍・セミナー参加費' },
-        ];
+        // Supabase 設定情報
+        const SUPABASE_URL = 'https://oagxstxstrmrxfxfmxta.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZ3hzdHhzdHJtcnhmeGZteHRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc3Mjg4NzMsImV4cCI6MjA3MzMwODg3M30.C2kIn0139Wn_84jC_QYlE1a5pL_b5OAnU_aO52v56P8';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+        let transactions = [];
         let corpChartInstance = null;
         let persChartInstance = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const now = new Date().toISOString().substring(0, 7);
             document.getElementById('corpMonthPicker').value = now;
             document.getElementById('persMonthPicker').value = now;
             document.getElementById('txDate').valueAsDate = new Date();
 
-            renderCorporate();
-            renderPersonal();
-            renderCombined();
+            await fetchTransactions();
         });
+
+        // Supabaseからデータ取得
+        async function fetchTransactions() {
+            try {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .order('date', { ascending: false });
+
+                if (error) throw error;
+
+                transactions = data || [];
+                refreshAll();
+            } catch (err) {
+                console.error('データ取得エラー:', err);
+                alert('データの読み込みに失敗しました。Supabaseの接続状況を確認してください。');
+            }
+        }
 
         function switchEntity(entity) {
             document.getElementById('corporateView').classList.add('hidden');
@@ -371,35 +388,31 @@
             }
         }
 
-        // 法人税計算ロジック（年800万以下の軽減税率・実効税率考慮）
+        // 法人税計算ロジック
         function calculateCorporateTax(preTaxProfit) {
-            if (preTaxProfit <= 0) return 70000; // 赤字でも均等割（最低約7万円）が発生
+            if (preTaxProfit <= 0) return 70000;
             let tax = 70000;
             if (preTaxProfit <= 8000000) {
-                tax += preTaxProfit * 0.25; // 軽減税率等およそ25%
+                tax += preTaxProfit * 0.25;
             } else {
-                tax += (8000000 * 0.25) + ((preTaxProfit - 8000000) * 0.34); // 800万超は実効税率約34%
+                tax += (8000000 * 0.25) + ((preTaxProfit - 8000000) * 0.34);
             }
             return Math.round(tax);
         }
 
-        // 個人事業主 税金・社会保険料計算概算ロジック
+        // 個人事業主 税金・社会保険料計算ロジック
         function calculatePersonalTax(netIncome, blueDeduction) {
             if (netIncome <= 0) return 0;
-            const taxableIncome = Math.max(0, netIncome - blueDeduction - 480000); // 基礎控除48万円
+            const taxableIncome = Math.max(0, netIncome - blueDeduction - 480000);
             if (taxableIncome <= 0) return 0;
 
-            // 所得税（簡易段階計算）
             let incomeTax = 0;
             if (taxableIncome <= 1950000) incomeTax = taxableIncome * 0.05;
             else if (taxableIncome <= 3300000) incomeTax = taxableIncome * 0.10 - 97500;
             else if (taxableIncome <= 6950000) incomeTax = taxableIncome * 0.20 - 427500;
             else incomeTax = taxableIncome * 0.23 - 636000;
 
-            // 住民税（一律10%）
             const residentTax = taxableIncome * 0.10;
-
-            // 国民健康保険料等概算（約10% 上限考慮なしの簡略化）
             const healthInsurance = taxableIncome * 0.09;
 
             return Math.round(Math.max(0, incomeTax) + residentTax + healthInsurance);
@@ -414,8 +427,8 @@
             tbody.innerHTML = '';
 
             filtered.forEach(t => {
-                if (t.category === 'sales') sales += t.amount;
-                else costAndExpense += t.amount;
+                if (t.category === 'sales') sales += Number(t.amount);
+                else costAndExpense += Number(t.amount);
 
                 const catBadge = t.category === 'sales' ? 'bg-indigo-100 text-indigo-700' : (t.category === 'cost' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700');
                 const catLabel = t.category === 'sales' ? '売上' : (t.category === 'cost' ? '原価' : '経費');
@@ -425,7 +438,7 @@
                         <td class="py-3 px-4 text-xs font-mono">${t.date}</td>
                         <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold ${catBadge}">${catLabel}</span></td>
                         <td class="py-3 px-4 text-xs">${t.memo || '-'}</td>
-                        <td class="py-3 px-4 text-right font-bold text-xs">¥${t.amount.toLocaleString()}</td>
+                        <td class="py-3 px-4 text-right font-bold text-xs">¥${Number(t.amount).toLocaleString()}</td>
                         <td class="py-3 px-4 text-center">
                             <button onclick="deleteTransaction(${t.id})" class="text-slate-400 hover:text-rose-600 text-xs"><i class="fa-solid fa-trash"></i></button>
                         </td>
@@ -444,7 +457,6 @@
             document.getElementById('corpEstimatedTax').innerText = `¥${estimatedTax.toLocaleString()}`;
             document.getElementById('corpNetProfit').innerText = `¥${netProfit.toLocaleString()}`;
 
-            // チャート描写
             const ctx = document.getElementById('corpChart').getContext('2d');
             if (corpChartInstance) corpChartInstance.destroy();
             corpChartInstance = new Chart(ctx, {
@@ -470,8 +482,8 @@
             tbody.innerHTML = '';
 
             filtered.forEach(t => {
-                if (t.category === 'sales') sales += t.amount;
-                else expenses += t.amount;
+                if (t.category === 'sales') sales += Number(t.amount);
+                else expenses += Number(t.amount);
 
                 const catBadge = t.category === 'sales' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
                 const catLabel = t.category === 'sales' ? '売上' : '経費';
@@ -481,7 +493,7 @@
                         <td class="py-3 px-4 text-xs font-mono">${t.date}</td>
                         <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[11px] font-bold ${catBadge}">${catLabel}</span></td>
                         <td class="py-3 px-4 text-xs">${t.memo || '-'}</td>
-                        <td class="py-3 px-4 text-right font-bold text-xs">¥${t.amount.toLocaleString()}</td>
+                        <td class="py-3 px-4 text-right font-bold text-xs">¥${Number(t.amount).toLocaleString()}</td>
                         <td class="py-3 px-4 text-center">
                             <button onclick="deleteTransaction(${t.id})" class="text-slate-400 hover:text-rose-600 text-xs"><i class="fa-solid fa-trash"></i></button>
                         </td>
@@ -500,7 +512,6 @@
             document.getElementById('persEstimatedTax').innerText = `¥${tax.toLocaleString()}`;
             document.getElementById('persTakeHome').innerText = `¥${takeHome.toLocaleString()}`;
 
-            // チャート描写
             const ctx = document.getElementById('persChart').getContext('2d');
             if (persChartInstance) persChartInstance.destroy();
             persChartInstance = new Chart(ctx, {
@@ -517,17 +528,15 @@
         }
 
         function renderCombined() {
-            // 法人集計
-            const corpSales = transactions.filter(t => t.entity === 'corporate' && t.category === 'sales').reduce((a, b) => a + b.amount, 0);
-            const corpExpense = transactions.filter(t => t.entity === 'corporate' && t.category !== 'sales').reduce((a, b) => a + b.amount, 0);
+            const corpSales = transactions.filter(t => t.entity === 'corporate' && t.category === 'sales').reduce((a, b) => a + Number(b.amount), 0);
+            const corpExpense = transactions.filter(t => t.entity === 'corporate' && t.category !== 'sales').reduce((a, b) => a + Number(b.amount), 0);
             const corpPreTax = corpSales - corpExpense;
             const corpTax = calculateCorporateTax(corpPreTax);
             const corpNet = corpPreTax - corpTax;
 
-            // 個人集計
             const blueDeduction = parseFloat(document.getElementById('persDeduction').value) || 650000;
-            const persSales = transactions.filter(t => t.entity === 'personal' && t.category === 'sales').reduce((a, b) => a + b.amount, 0);
-            const persExpense = transactions.filter(t => t.entity === 'personal' && t.category !== 'sales').reduce((a, b) => a + b.amount, 0);
+            const persSales = transactions.filter(t => t.entity === 'personal' && t.category === 'sales').reduce((a, b) => a + Number(b.amount), 0);
+            const persExpense = transactions.filter(t => t.entity === 'personal' && t.category !== 'sales').reduce((a, b) => a + Number(b.amount), 0);
             const persIncome = persSales - persExpense;
             const persTax = calculatePersonalTax(persIncome, blueDeduction);
             const persNet = persIncome - persTax;
@@ -542,24 +551,31 @@
             document.getElementById('combPersTax').innerText = `¥${persTax.toLocaleString()}`;
             document.getElementById('combPersNet').innerText = `¥${persNet.toLocaleString()}`;
 
-            // 総合手取り額
             const totalTakeHome = Math.max(0, corpNet) + Math.max(0, persNet);
-
-            // 会社員換算（手取り率 約75〜80% で逆算推計）
             const equivSalary = Math.round(totalTakeHome / 0.77);
             document.getElementById('equivSalaryText').innerText = `¥${equivSalary.toLocaleString()}`;
         }
 
-        function deleteTransaction(id) {
+        // Supabaseからの削除処理
+        async function deleteTransaction(id) {
             if (confirm('この取引データを削除してもよろしいですか？')) {
-                transactions = transactions.filter(t => t.id !== id);
-                renderCorporate();
-                renderPersonal();
-                renderCombined();
+                try {
+                    const { error } = await supabase
+                        .from('transactions')
+                        .delete()
+                        .eq('id', id);
+
+                    if (error) throw error;
+
+                    transactions = transactions.filter(t => t.id !== id);
+                    refreshAll();
+                } catch (err) {
+                    console.error('削除エラー:', err);
+                    alert('データの削除に失敗しました。');
+                }
             }
         }
 
-        // モーダル操作 ＆ タブ切り替え
         function openModal(mode = 'single') {
             document.getElementById('inputModal').classList.remove('hidden');
             document.getElementById('inputModal').classList.add('flex');
@@ -585,11 +601,14 @@
             }
         }
 
-        // 個別保存
-        function handleSaveSingle(e) {
+        // Supabaseへの個別保存処理
+        async function handleSaveSingle(e) {
             e.preventDefault();
+            const saveBtn = document.getElementById('saveSingleBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerText = '保存中...';
+
             const newTx = {
-                id: Date.now(),
                 entity: document.getElementById('txEntity').value,
                 date: document.getElementById('txDate').value,
                 category: document.getElementById('txCategory').value,
@@ -597,30 +616,52 @@
                 memo: document.getElementById('txMemo').value
             };
 
-            transactions.push(newTx);
-            closeModal();
-            refreshAll();
+            try {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .insert([newTx])
+                    .select();
+
+                if (error) throw error;
+
+                if (data) {
+                    transactions.unshift(data[0]);
+                }
+                closeModal();
+                refreshAll();
+            } catch (err) {
+                console.error('保存エラー:', err);
+                alert('データの保存に失敗しました。');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerText = '保存';
+            }
         }
 
-        // 一括保存パース処理
-        function handleSaveBulk(e) {
+        // Supabaseへの一括保存処理
+        async function handleSaveBulk(e) {
             e.preventDefault();
+            const saveBtn = document.getElementById('saveBulkBtn');
+            saveBtn.disabled = true;
+            saveBtn.innerText = '送信中...';
+
             const entity = document.getElementById('bulkEntity').value;
             const text = document.getElementById('bulkText').value.trim();
 
-            if (!text) return;
+            if (!text) {
+                saveBtn.disabled = false;
+                return;
+            }
 
             const lines = text.split('\n');
-            let addedCount = 0;
+            const insertRows = [];
 
-            lines.forEach((line, idx) => {
+            lines.forEach((line) => {
                 if (!line.trim()) return;
-                // カンマ、タブ、または連続スペースで分割
                 const parts = line.split(/[\t,]+/).map(p => p.trim());
                 if (parts.length >= 3) {
                     const date = parts[0];
                     let cat = parts[1].toLowerCase();
-                    // カテゴリ変換補正
                     if (cat.includes('売上') || cat.includes('収入') || cat === 'sales') cat = 'sales';
                     else if (cat.includes('原価') || cat.includes('仕入') || cat === 'cost') cat = 'cost';
                     else cat = 'expense';
@@ -629,23 +670,43 @@
                     const memo = parts[3] || '';
 
                     if (date && !isNaN(amount)) {
-                        transactions.push({
-                            id: Date.now() + idx,
+                        insertRows.push({
                             entity: entity,
                             date: date,
                             category: cat,
                             amount: amount,
                             memo: memo
                         });
-                        addedCount++;
                     }
                 }
             });
 
-            alert(`${addedCount}件の取引を一括追加しました。`);
-            document.getElementById('bulkText').value = '';
-            closeModal();
-            refreshAll();
+            if (insertRows.length === 0) {
+                alert('有効なデータが見つかりませんでした。');
+                saveBtn.disabled = false;
+                saveBtn.innerText = '一括登録実行';
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .insert(insertRows)
+                    .select();
+
+                if (error) throw error;
+
+                alert(`${insertRows.length}件の取引を一括追加しました。`);
+                document.getElementById('bulkText').value = '';
+                closeModal();
+                await fetchTransactions();
+            } catch (err) {
+                console.error('一括保存エラー:', err);
+                alert('一括保存に失敗しました。');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fa-solid fa-upload mr-1"></i>一括登録実行';
+            }
         }
 
         function refreshAll() {
